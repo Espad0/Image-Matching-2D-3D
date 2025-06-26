@@ -1,8 +1,24 @@
 """
 SuperGlue implementation for sparse feature matching.
 
-SuperGlue is a neural network that matches sparse local features by learning
-to reason about the correspondences using attention mechanisms.
+SuperGlue is a graph neural network that acts like a "matchmaker" for keypoints.
+Given two sets of keypoints (one from each image), it figures out which points
+in image 1 correspond to which points in image 2.
+
+How it works:
+1. First, detect keypoints using SuperPoint (corner detector)
+2. Build a graph where each keypoint is a node
+3. Use attention (like transformers) to let keypoints "communicate"
+4. Apply optimal transport to find the best global matching
+
+Key insights:
+- It doesn't just look at individual points - it considers spatial relationships
+- Uses both self-attention (within an image) and cross-attention (between images)
+- The Sinkhorn algorithm ensures a valid matching (each point matches at most once)
+
+Analogy: Imagine trying to match people in two group photos taken at different
+times. You'd look at each person's appearance, but also their position relative
+to others. That's what SuperGlue does with keypoints!
 """
 
 import cv2

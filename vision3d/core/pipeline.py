@@ -27,21 +27,34 @@ logger = logging.getLogger(__name__)
 
 class Vision3DPipeline:
     """
-    Production-ready pipeline for 3D reconstruction from images.
+    Main orchestrator for 3D reconstruction from images.
     
-    This class implements a complete pipeline combining modern deep learning
-    approaches (LoFTR, SuperGlue) with classical geometric methods (COLMAP)
-    for robust 3D reconstruction.
+    This class implements a complete pipeline that transforms a collection of 2D photos
+    into a 3D model. It intelligently combines modern deep learning approaches 
+    (LoFTR, SuperGlue) with classical geometric methods (COLMAP).
+    
+    Think of this class as the "conductor" of an orchestra, coordinating different
+    components to work together harmoniously.
     
     Attributes:
-        device: PyTorch device for GPU acceleration
-        matcher_type: Type of matcher to use ('loftr', 'superglue', 'hybrid')
-        config: Configuration dictionary for the pipeline
+        device: PyTorch device for GPU acceleration (cuda/cpu)
+        matcher_type: Type of matcher to use:
+            - 'loftr': Dense matching, best for textureless scenes
+            - 'superglue': Sparse matching, faster and good for textured scenes
+            - 'hybrid': Automatically chooses based on scene characteristics
+        config: Configuration dictionary controlling pipeline behavior
     
     Example:
+        >>> # Create pipeline with hybrid matching (recommended)
         >>> pipeline = Vision3DPipeline(matcher_type='hybrid')
-        >>> images = ['img1.jpg', 'img2.jpg', 'img3.jpg']
+        >>> 
+        >>> # Provide list of image paths
+        >>> images = ['photo1.jpg', 'photo2.jpg', 'photo3.jpg']
+        >>> 
+        >>> # Run reconstruction - this is where the magic happens!
         >>> reconstruction = pipeline.reconstruct(images)
+        >>> 
+        >>> # Export results in various formats
         >>> pipeline.export_results(reconstruction, 'output/')
     """
     

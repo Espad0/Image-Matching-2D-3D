@@ -1,8 +1,25 @@
 """
 Image pair selection using global descriptors.
 
-This module implements efficient image pair selection using deep learning
-models to compute global image descriptors and find similar images.
+This module solves a critical problem in 3D reconstruction: which images should
+we try to match? With N images, there are N*(N-1)/2 possible pairs. For 100 
+images, that's 4,950 pairs! We need to be smarter.
+
+The solution: Use AI to create a "fingerprint" (global descriptor) for each image,
+then select pairs with similar fingerprints.
+
+How it works:
+1. Pass each image through a pre-trained CNN (like EfficientNet)
+2. Extract a feature vector that captures the image's content
+3. Compare feature vectors to find similar images
+4. Select pairs that are similar but not identical
+
+Why this matters:
+- 100 images: 4,950 possible pairs → ~500 selected pairs (10x speedup!)
+- 1000 images: 499,500 possible pairs → ~5,000 selected pairs (100x speedup!)
+
+The key insight: Images that will match well usually have similar content
+(same building, same scene), so we can predict which pairs are worth trying.
 """
 
 import numpy as np
