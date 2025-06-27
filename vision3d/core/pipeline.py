@@ -92,6 +92,7 @@ class Vision3DPipeline:
                 'exhaustive_if_less': 20
             },
             'matching': {
+                'image_resize': 1024,
                 'min_matches': 15,
                 'confidence_threshold': 0.2,
                 'use_tta': True,

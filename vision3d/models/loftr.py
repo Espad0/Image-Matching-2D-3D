@@ -341,7 +341,11 @@ class LoFTRMatcher(BaseMatcher):
             if not is_duplicate:
                 unique_indices.append(i)
         
-        unique_indices = np.array(unique_indices)
+        if len(unique_indices) == 0:
+            # Return empty arrays if no unique matches
+            return np.array([]), np.array([]), np.array([])
+        
+        unique_indices = np.array(unique_indices, dtype=np.int64)
         
         return kpts1[unique_indices], kpts2[unique_indices], conf[unique_indices]
     
