@@ -7,22 +7,23 @@
 
 ## 🚀 Overview
 
-Vision3D is an educational and production-ready implementation of cutting-edge 3D reconstruction techniques. This project demonstrates how to build a complete 3D reconstruction pipeline from scratch, combining modern deep learning with classical computer vision.
+Vision3D is a production-ready, one-step solution for 3D scene reconstruction from photographs. Provide a folder of images, execute a single command, and obtain a high-quality 3D model. The library seamlessly integrates state-of-the-art deep learning with classical computer vision, abstracting away complexity while remaining fully configurable for power users.
 
-### What is 3D Reconstruction?
+```python
+from vision3d import Vision3DPipeline
 
-3D reconstruction is the process of capturing the shape and appearance of real objects from multiple 2D photographs. Imagine taking several photos of a building from different angles and then using those photos to create a 3D model - that's what this code does automatically!
+pipeline = Vision3DPipeline()
+
+reconstruction = pipeline.reconstruct(
+    "path/to/your/images",     # Folder containing .jpg / .png photos
+    output_dir="output"        # Where to save the 3D model & reports
+)
+```
 
 [TODO: image displaying the transformation from multiple 2D photos to a 3D model]
 
-### Why This Repository?
-
-This repository serves three purposes:
-1. **Educational**: Learn the theory and practice of 3D reconstruction (see [THEORY.md](THEORY.md))
-2. **Practical**: Production-ready code for real-world applications
-3. **Research**: Demonstrates state-of-the-art methods from top computer vision conferences
-
 **Key Features:**
+- 🚀 **One-Step Reconstruction**: Generate a 3D model from raw images with a single Python or CLI command
 - 🔥 **Hybrid Matching**: Intelligently combines LoFTR (dense) and SuperGlue (sparse) matching
 - 🎯 **Smart Image Pairing**: Efficiently selects which images to match using AI
 - 🔧 **Production Ready**: Professional code structure with error handling and logging
