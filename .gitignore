@@ -159,3 +159,5 @@ temp/
 tmp/
 cache/
 test.py
+
+CLAUDE.md

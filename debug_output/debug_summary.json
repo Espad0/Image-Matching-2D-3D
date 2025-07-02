@@ -1,0 +1,21 @@
+{
+  "default": {
+    "error": "'tta_variants'"
+  },
+  "low_threshold": {
+    "error": "'tta_variants'"
+  },
+  "no_tta": {
+    "num_matches": 0,
+    "confidence": {
+      "mean": 0,
+      "std": 0,
+      "min": 0,
+      "max": 0
+    },
+    "spatial_distribution": {}
+  },
+  "high_res": {
+    "error": "'tta_variants'"
+  }
+}

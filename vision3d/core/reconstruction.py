@@ -113,21 +113,20 @@ class ReconstructionEngine:
         """Get COLMAP mapper options."""
         import pycolmap
         
-        options = pycolmap.IncrementalMapperOptions()
+        options = pycolmap.IncrementalPipelineOptions()
         
-        # Basic options
-        options.min_model_size = self.config['min_model_size']
-        options.max_reproj_error = self.config['max_reproj_error']
-        options.min_triangulation_angle = self.config['min_triangulation_angle']
+        # Set mapper options
+        mapper_options = options.mapper
+        mapper_options.init_min_tri_angle = self.config['min_triangulation_angle']
+        mapper_options.filter_max_reproj_error = self.config['filter_max_reproj_error']
+        mapper_options.filter_min_tri_angle = self.config['filter_min_tri_angle']
         
-        # Bundle adjustment options
-        options.ba_refine_focal = self.config['ba_refine_focal']
-        options.ba_refine_principal = self.config['ba_refine_principal']
-        options.ba_refine_distortion = self.config['ba_refine_distortion']
+        # Registration options
+        mapper_options.abs_pose_min_num_inliers = 15
+        mapper_options.abs_pose_min_inlier_ratio = 0.25
         
         # Efficiency options for production
-        options.ba_local_max_refinements = 2
-        options.ba_global_max_refinements = 10
+        mapper_options.num_threads = -1  # Use all available threads
         
         return options
     

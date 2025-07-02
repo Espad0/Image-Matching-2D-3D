@@ -7,7 +7,7 @@
 
 ## 🚀 Overview
 
-Vision3D is a production-ready, one-step solution for 3D scene reconstruction from photographs. Provide a folder of images, execute a single command, and obtain a high-quality 3D model. The library seamlessly integrates state-of-the-art deep learning with classical computer vision, abstracting away complexity while remaining fully configurable for power users.
+Vision3D is a production-ready, one-step solution for 3D scene reconstruction from photographs. Provide a folder of images, execute a single command, and obtain a high-quality 3D model. The library integrates state-of-the-art deep learning with classical computer vision, abstracting away complexity while remaining fully configurable.
 
 ```python
 from vision3d import Vision3DPipeline
@@ -23,10 +23,9 @@ reconstruction = pipeline.reconstruct(
 [TODO: image displaying the transformation from multiple 2D photos to a 3D model]
 
 **Key Features:**
-- 🚀 **One-Step Reconstruction**: Generate a 3D model from raw images with a single Python or CLI command
+- 🚀 **One-Step Reconstruction**: Generates a 3D model from raw images with a single python command
 - 🔥 **Hybrid Matching**: Intelligently combines LoFTR (dense) and SuperGlue (sparse) matching
-- 🎯 **Smart Image Pairing**: Efficiently selects which images to match using AI
-- 🔧 **Production Ready**: Professional code structure with error handling and logging
+- 🎯 **Smart Image Pairing**: Efficiently selects which images to match
 - 📊 **Performance Optimized**: GPU acceleration, multi-scale processing, and smart caching
 - 🛠️ **Easy to Understand**: Extensive documentation and comments for learning
 

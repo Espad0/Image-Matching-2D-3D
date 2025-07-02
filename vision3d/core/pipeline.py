@@ -99,10 +99,20 @@ class Vision3DPipeline:
                 'tta_variants': ['orig', 'flip_lr']
             },
             'reconstruction': {
+                # ColmapInterface config
+                'camera_model': 'simple-radial',
+                'single_camera': False,
+                # ReconstructionEngine config
                 'min_model_size': 3,
+                'max_reproj_error': 4.0,
+                'min_triangulation_angle': 1.5,
                 'ba_refine_focal': True,
                 'ba_refine_principal': True,
-                'ba_refine_distortion': True
+                'ba_refine_distortion': True,
+                'ba_local_max_refinements': 2,
+                'ba_global_max_refinements': 10,
+                'filter_max_reproj_error': 4.0,
+                'filter_min_tri_angle': 1.5
             }
         }
     
@@ -184,17 +194,27 @@ class Vision3DPipeline:
         # Step 3: Import to COLMAP
         logger.info("Step 3/4: Importing to COLMAP database...")
         database_path = output_dir / 'colmap.db'
+        # Delete existing database to ensure clean start
+        if database_path.exists():
+            database_path.unlink()
         self.colmap.import_features(
             image_paths,
             matches,
             database_path
         )
         
+        # Run geometric verification
+        try:
+            logger.info("Running geometric verification...")
+            self.colmap.run_geometric_verification(database_path)
+        except Exception as e:
+            logger.warning(f"Geometric verification failed: {e}")
+        
         # Step 4: Run reconstruction
         logger.info("Step 4/4: Running 3D reconstruction...")
         reconstruction = self.reconstruction_engine.reconstruct(
             database_path,
-            image_paths[0].parent,  # Assume all images in same directory
+            Path(image_paths[0]).parent,  # Assume all images in same directory
             output_dir / 'sparse',
             verbose=verbose
         )

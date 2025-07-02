@@ -113,14 +113,13 @@ class LoFTRMatcher(BaseMatcher):
         """Setup LoFTR model."""
         logger.info(f"Loading LoFTR model ({self.pretrained})...")
         
-        # Initialize LoFTR
-        self.matcher = KF.LoFTR(pretrained=None)
-        
-        # Load pretrained weights
-        if self.pretrained == 'outdoor':
-            # In production, weights would be loaded from a local path
-            # self.matcher.load_state_dict(torch.load('weights/loftr_outdoor.ckpt')['state_dict'])
-            pass
+        # Initialize LoFTR with pretrained weights
+        try:
+            self.matcher = KF.LoFTR(pretrained=self.pretrained)
+        except Exception as e:
+            logger.warning(f"Failed to load pretrained weights: {e}")
+            logger.info("Loading LoFTR without pretrained weights")
+            self.matcher = KF.LoFTR(pretrained=None)
         
         self.matcher = self.matcher.to(self.device).eval()
         logger.info("LoFTR model loaded successfully")
@@ -342,8 +341,8 @@ class LoFTRMatcher(BaseMatcher):
                 unique_indices.append(i)
         
         if len(unique_indices) == 0:
-            # Return empty arrays if no unique matches
-            return np.array([]), np.array([]), np.array([])
+            # Return empty arrays with proper shape if no unique matches
+            return np.array([]).reshape(0, 2), np.array([]).reshape(0, 2), np.array([])
         
         unique_indices = np.array(unique_indices, dtype=np.int64)
         
