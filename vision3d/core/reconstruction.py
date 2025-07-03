@@ -89,12 +89,12 @@ class ReconstructionEngine:
         # Process reconstructions
         if isinstance(reconstructions, dict) and reconstructions:
             # Multiple reconstructions found
-            best_reconstruction = self._select_best_reconstruction(reconstructions)
+            best_idx, best_reconstruction = self._select_best_reconstruction(reconstructions)
             reconstruction_data = self._process_reconstruction(best_reconstruction)
             
             # Merge other reconstructions if beneficial
             for idx, recon in reconstructions.items():
-                if idx != best_reconstruction.model_id:
+                if idx != best_idx:
                     self._try_merge_reconstruction(reconstruction_data, recon)
         else:
             # Single or no reconstruction
@@ -146,7 +146,7 @@ class ReconstructionEngine:
                 best_recon = recon
         
         logger.info(f"Selected reconstruction {best_idx} with score {best_score}")
-        return best_recon
+        return best_idx, best_recon
     
     def _process_reconstruction(self, reconstruction) -> Dict:
         """Process COLMAP reconstruction into our format."""
@@ -161,8 +161,24 @@ class ReconstructionEngine:
         
         # Process cameras
         for cam_id, camera in reconstruction.cameras.items():
+            # Handle different pycolmap API versions
+            if hasattr(camera, 'model_name'):
+                model_name = camera.model_name
+            elif hasattr(camera, 'model'):
+                # Map model ID to name
+                model_names = {
+                    0: 'SIMPLE_PINHOLE',
+                    1: 'PINHOLE', 
+                    2: 'SIMPLE_RADIAL',
+                    3: 'RADIAL',
+                    4: 'OPENCV'
+                }
+                model_name = model_names.get(camera.model, f'UNKNOWN_{camera.model}')
+            else:
+                model_name = 'UNKNOWN'
+                
             data['cameras'][cam_id] = {
-                'model': camera.model_name,
+                'model': model_name,
                 'width': camera.width,
                 'height': camera.height,
                 'params': camera.params.tolist(),
@@ -171,32 +187,88 @@ class ReconstructionEngine:
         
         # Process images
         for img_id, image in reconstruction.images.items():
+            # Extract rotation and translation from cam_from_world transform
+            if hasattr(image, 'cam_from_world'):
+                # New API: cam_from_world contains the transformation
+                transform = image.cam_from_world
+                # Extract rotation matrix and translation vector
+                R = transform.rotation.matrix()
+                t = transform.translation
+            elif hasattr(image, 'rotmat'):
+                # Old API
+                R = image.rotmat()
+                t = image.tvec
+            else:
+                # Fallback: try to extract from quaternion
+                if hasattr(image, 'qvec'):
+                    from scipy.spatial.transform import Rotation
+                    R = Rotation.from_quat(image.qvec).as_matrix()
+                    t = image.tvec if hasattr(image, 'tvec') else np.zeros(3)
+                else:
+                    R = np.eye(3)
+                    t = np.zeros(3)
+            
             data['images'][image.name] = {
                 'image_id': img_id,
                 'camera_id': image.camera_id,
-                'R': image.rotmat().tolist(),
-                't': image.tvec.tolist(),
-                'qvec': image.qvec.tolist(),
-                'num_points3D': len(image.point3D_ids)
+                'R': R.tolist(),
+                't': t.tolist(),
+                'qvec': transform.rotation.quat if hasattr(image, 'cam_from_world') else getattr(image, 'qvec', [1, 0, 0, 0]),
+                'num_points3D': image.num_points3D if hasattr(image, 'num_points3D') else 0
             }
         
         # Process 3D points
         for pt_id, point3D in reconstruction.points3D.items():
+            # Extract track information (image observations)
+            if hasattr(point3D, 'track'):
+                # New API: track contains the observations
+                track = point3D.track
+                image_ids = []
+                point2D_idxs = []
+                for element in track.elements:
+                    image_ids.append(element.image_id)
+                    point2D_idxs.append(element.point2D_idx)
+            elif hasattr(point3D, 'image_ids'):
+                # Old API
+                image_ids = point3D.image_ids.tolist()
+                point2D_idxs = point3D.point2D_idxs.tolist()
+            else:
+                image_ids = []
+                point2D_idxs = []
+            
             data['points3D'][pt_id] = {
                 'xyz': point3D.xyz.tolist(),
-                'rgb': point3D.color.tolist(),
-                'error': point3D.error,
-                'image_ids': point3D.image_ids.tolist(),
-                'point2D_idxs': point3D.point2D_idxs.tolist()
+                'rgb': point3D.color.tolist() if hasattr(point3D, 'color') else [128, 128, 128],
+                'error': point3D.error if hasattr(point3D, 'error') else 0.0,
+                'image_ids': image_ids,
+                'point2D_idxs': point2D_idxs
             }
         
         return data
     
     def _get_focal_length(self, camera) -> float:
         """Extract focal length from camera parameters."""
-        if camera.model_name in ['SIMPLE_PINHOLE', 'SIMPLE_RADIAL']:
+        # Get model ID if available
+        if hasattr(camera, 'model'):
+            model_id = camera.model
+        else:
+            # Try to determine from model_name if available
+            if hasattr(camera, 'model_name'):
+                model_map = {
+                    'SIMPLE_PINHOLE': 0,
+                    'PINHOLE': 1,
+                    'SIMPLE_RADIAL': 2,
+                    'RADIAL': 3,
+                    'OPENCV': 4
+                }
+                model_id = model_map.get(camera.model_name, 0)
+            else:
+                model_id = 2  # Default to SIMPLE_RADIAL
+        
+        # Extract focal length based on model
+        if model_id in [0, 2]:  # SIMPLE_PINHOLE, SIMPLE_RADIAL
             return camera.params[0]
-        elif camera.model_name in ['PINHOLE', 'RADIAL', 'OPENCV']:
+        elif model_id in [1, 3, 4]:  # PINHOLE, RADIAL, OPENCV
             return (camera.params[0] + camera.params[1]) / 2
         else:
             return camera.params[0]

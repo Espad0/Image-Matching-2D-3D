@@ -28,6 +28,7 @@ import kornia as K
 import kornia.feature as KF
 from typing import Dict, List, Tuple, Optional
 import logging
+from pathlib import Path
 
 from .base import BaseMatcher
 
@@ -162,22 +163,29 @@ class LoFTRMatcher(BaseMatcher):
             >>> pts1_good = pts1[good_matches]
             >>> pts2_good = pts2[good_matches]
         """
+        logger.debug(f"Matching {Path(image1_path).name} <-> {Path(image2_path).name}")
+        
         # Load and preprocess images
+        logger.debug("Preprocessing images...")
         img1, img1_tensor, scale1 = self._preprocess_image(image1_path, resize)
         img2, img2_tensor, scale2 = self._preprocess_image(image2_path, resize)
         
         with torch.no_grad():
             if self.config['use_tta']:
                 # Apply test-time augmentation
+                logger.debug("Matching with TTA...")
                 mkpts1, mkpts2, mconf = self._match_with_tta(
                     img1, img2,
                     img1_tensor, img2_tensor
                 )
             else:
                 # Single forward pass
+                logger.debug("Matching single pass...")
                 mkpts1, mkpts2, mconf = self._match_single(
                     img1_tensor, img2_tensor
                 )
+        
+        logger.debug(f"Found {len(mkpts1)} raw matches")
         
         # Apply confidence threshold
         if self.config['confidence_threshold'] is not None:
@@ -185,6 +193,7 @@ class LoFTRMatcher(BaseMatcher):
             mkpts1 = mkpts1[mask]
             mkpts2 = mkpts2[mask]
             mconf = mconf[mask]
+            logger.debug(f"After confidence filtering: {len(mkpts1)} matches")
         
         # Rescale keypoints to original image size
         mkpts1 = mkpts1 / scale1
@@ -276,6 +285,8 @@ class LoFTRMatcher(BaseMatcher):
         
         # Process each augmentation variant
         for tta in self.config['tta_variants']:
+            logger.debug(f"Processing TTA variant: {tta}")
+            
             # Apply augmentation (e.g., flip the image)
             img1_aug, inv_transform1 = self.apply_tta(img1_tensor, tta)
             img2_aug, inv_transform2 = self.apply_tta(img2_tensor, tta)
@@ -293,6 +304,8 @@ class LoFTRMatcher(BaseMatcher):
             mkpts2 = correspondences['keypoints1'].cpu().numpy()
             mconf = correspondences['confidence'].cpu().numpy()
             
+            logger.debug(f"TTA {tta}: found {len(mkpts1)} matches")
+            
             # Reverse the augmentation on keypoint coordinates
             # E.g., if we flipped the image, flip the x-coordinates back
             if tta != 'orig':
@@ -308,8 +321,12 @@ class LoFTRMatcher(BaseMatcher):
         mkpts2 = np.concatenate(all_mkpts2, axis=0)
         mconf = np.concatenate(all_mconf, axis=0)
         
+        logger.debug(f"Combined TTA: {len(mkpts1)} matches before deduplication")
+        
         # Remove duplicate matches (same point found in multiple augmentations)
         mkpts1, mkpts2, mconf = self._remove_duplicates(mkpts1, mkpts2, mconf)
+        
+        logger.debug(f"After deduplication: {len(mkpts1)} matches")
         
         return mkpts1, mkpts2, mconf
     
@@ -320,33 +337,63 @@ class LoFTRMatcher(BaseMatcher):
         conf: np.ndarray,
         threshold: float = 2.0
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Remove duplicate matches."""
+        """Remove duplicate matches using efficient spatial indexing."""
+        if len(kpts1) == 0:
+            return np.array([]).reshape(0, 2), np.array([]).reshape(0, 2), np.array([])
+        
+        logger.debug(f"Removing duplicates from {len(kpts1)} matches (threshold={threshold})")
+        
+        # Skip deduplication if we have a reasonable number of matches
+        if len(kpts1) < 100:
+            return kpts1, kpts2, conf
+        
         # Combine keypoints for duplicate detection
         combined = np.concatenate([kpts1, kpts2], axis=1)
         
-        # Find unique matches
-        unique_indices = []
-        for i in range(len(combined)):
-            is_duplicate = False
-            for j in unique_indices:
-                dist = np.linalg.norm(combined[i] - combined[j])
-                if dist < threshold:
-                    is_duplicate = True
-                    # Keep the one with higher confidence
-                    if conf[i] > conf[j]:
-                        unique_indices.remove(j)
-                        unique_indices.append(i)
-                    break
-            if not is_duplicate:
-                unique_indices.append(i)
-        
-        if len(unique_indices) == 0:
-            # Return empty arrays with proper shape if no unique matches
-            return np.array([]).reshape(0, 2), np.array([]).reshape(0, 2), np.array([])
-        
-        unique_indices = np.array(unique_indices, dtype=np.int64)
-        
-        return kpts1[unique_indices], kpts2[unique_indices], conf[unique_indices]
+        try:
+            from scipy.spatial import cKDTree
+            
+            # Sort by confidence (descending) to keep high-confidence matches
+            sorted_indices = np.argsort(conf)[::-1]
+            
+            # For very large match sets, use a more efficient algorithm
+            if len(kpts1) > 5000:
+                logger.debug("Using fast deduplication for large match set")
+                # Simply take top N matches by confidence
+                max_matches = self.config.get('max_keypoints', 8192)
+                if len(sorted_indices) > max_matches:
+                    sorted_indices = sorted_indices[:max_matches]
+                return kpts1[sorted_indices], kpts2[sorted_indices], conf[sorted_indices]
+            
+            # Build KDTree once for all points
+            tree = cKDTree(combined)
+            
+            # Find all pairs of points within threshold distance
+            pairs = tree.query_pairs(threshold)
+            
+            # Create a set to track points to remove (lower confidence ones)
+            to_remove = set()
+            for i, j in pairs:
+                if conf[i] < conf[j]:
+                    to_remove.add(i)
+                else:
+                    to_remove.add(j)
+            
+            # Keep indices not in to_remove set
+            keep_indices = [i for i in range(len(kpts1)) if i not in to_remove]
+            
+            if len(keep_indices) == 0:
+                return np.array([]).reshape(0, 2), np.array([]).reshape(0, 2), np.array([])
+            
+            keep_indices = np.array(keep_indices, dtype=np.int64)
+            
+            logger.debug(f"Kept {len(keep_indices)} unique matches")
+            
+            return kpts1[keep_indices], kpts2[keep_indices], conf[keep_indices]
+            
+        except ImportError:
+            logger.warning("scipy not available, skipping deduplication")
+            return kpts1, kpts2, conf
     
     def match_multi_scale(
         self,
