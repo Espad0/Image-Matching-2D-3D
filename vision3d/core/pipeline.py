@@ -204,11 +204,8 @@ class Vision3DPipeline:
         )
         
         # Run geometric verification
-        try:
-            logger.info("Running geometric verification...")
-            self.colmap.run_geometric_verification(database_path)
-        except Exception as e:
-            logger.warning(f"Geometric verification failed: {e}")
+        logger.info("Running geometric verification...")
+        self.colmap.run_geometric_verification(database_path)
         
         # Step 4: Run reconstruction
         logger.info("Step 4/4: Running 3D reconstruction...")

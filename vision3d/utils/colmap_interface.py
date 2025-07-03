@@ -259,68 +259,14 @@ class ColmapInterface:
         
         logger.info("Running geometric verification...")
         
-        # Verify matches using two-view geometry estimation
+        # Use COLMAP's match_exhaustive to perform geometric verification
+        # This automatically estimates two-view geometries and populates the database
         try:
-            db = pycolmap.Database(str(database_path))
-            
-            # Get all image pairs with matches
-            image_pairs = []
-            cursor = db.connection.cursor()
-            cursor.execute("SELECT pair_id FROM matches")
-            for (pair_id,) in cursor.fetchall():
-                # Decode pair_id to image ids
-                image_id2 = pair_id % 2147483647
-                image_id1 = (pair_id - image_id2) // 2147483647
-                image_pairs.append((image_id1, image_id2))
-            
-            logger.info(f"Verifying {len(image_pairs)} image pairs...")
-            
-            # Estimate two-view geometry for each pair
-            options = pycolmap.TwoViewGeometryOptions()
-            for image_id1, image_id2 in image_pairs:
-                # Get matches for this pair
-                matches = db.read_matches(image_id1, image_id2)
-                if len(matches) > 0:
-                    # Get keypoints
-                    keypoints1 = db.read_keypoints(image_id1)
-                    keypoints2 = db.read_keypoints(image_id2)
-                    
-                    # Get cameras
-                    image1 = db.read_image(image_id1)
-                    image2 = db.read_image(image_id2)
-                    camera1 = db.read_camera(image1.camera_id)
-                    camera2 = db.read_camera(image2.camera_id)
-                    
-                    # Estimate two-view geometry
-                    matched_keypoints1 = keypoints1[matches[:, 0]]
-                    matched_keypoints2 = keypoints2[matches[:, 1]]
-                    
-                    two_view_geometry = pycolmap.estimate_two_view_geometry(
-                        camera1, matched_keypoints1,
-                        camera2, matched_keypoints2,
-                        matches, options
-                    )
-                    
-                    # Write verified geometry to database
-                    db.write_two_view_geometry(image_id1, image_id2, two_view_geometry)
-                    
-                    logger.debug(f"Verified pair ({image_id1}, {image_id2}): "
-                               f"{two_view_geometry.inlier_matches.shape[0]} inliers")
-            
-            db.close()
-            logger.info("Geometric verification completed")
-            
+            pycolmap.match_exhaustive(str(database_path))
+            logger.info("Geometric verification completed successfully")
         except Exception as e:
             logger.error(f"Geometric verification failed: {e}")
-            # Fall back to exhaustive matching if available
-            try:
-                pycolmap.verify_matches(
-                    str(database_path),
-                    pairs_path=None,
-                    options=pycolmap.TwoViewGeometryOptions()
-                )
-            except:
-                logger.warning("Could not run geometric verification")
+            raise
     
     def get_mapper_options(self) -> Dict:
         """Get COLMAP mapper options from config."""
