@@ -39,12 +39,14 @@ class ReconstructionEngine:
     def _get_default_config(self) -> Dict:
         """Get default reconstruction configuration."""
         return {
-            'min_model_size': 3,
+            'min_model_size': 3,  # IMC-2023 setting for smaller reconstructions
             'max_reproj_error': 4.0,
             'min_triangulation_angle': 1.5,
             'ba_refine_focal': True,
             'ba_refine_principal': True,
             'ba_refine_distortion': True,
+            'ba_local_max_refinements': 2,  # IMC-2023 setting
+            'ba_global_max_refinements': 20,  # IMC-2023 setting
             'filter_max_reproj_error': 4.0,
             'filter_min_tri_angle': 1.5
         }
@@ -121,9 +123,21 @@ class ReconstructionEngine:
         mapper_options.filter_max_reproj_error = self.config['filter_max_reproj_error']
         mapper_options.filter_min_tri_angle = self.config['filter_min_tri_angle']
         
-        # Registration options
-        mapper_options.abs_pose_min_num_inliers = 15
-        mapper_options.abs_pose_min_inlier_ratio = 0.25
+        # Registration options - lowered thresholds for more permissive registration
+        mapper_options.abs_pose_min_num_inliers = 8  # Lowered from 15
+        mapper_options.abs_pose_min_inlier_ratio = 0.15  # Lowered from 0.25
+        
+        # IMC-2023 optimized parameters
+        # min_model_size is on the pipeline options, not mapper
+        options.min_model_size = self.config.get('min_model_size', 3)  # Allow smaller reconstructions
+        
+        # Bundle adjustment options are also on pipeline options
+        options.ba_local_max_refinements = self.config.get('ba_local_max_refinements', 2)  # Faster local BA
+        options.ba_global_max_refinements = self.config.get('ba_global_max_refinements', 20)  # More global optimization
+        
+        # Bundle adjustment refinement options
+        mapper_options.abs_pose_refine_focal_length = self.config.get('ba_refine_focal', True)
+        mapper_options.abs_pose_refine_extra_params = self.config.get('ba_refine_distortion', True)
         
         # Efficiency options for production
         mapper_options.num_threads = -1  # Use all available threads

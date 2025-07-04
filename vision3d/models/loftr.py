@@ -103,6 +103,7 @@ class LoFTRMatcher(BaseMatcher):
         """
         return {
             'image_resize': 1024,  # Max image dimension (larger = more accurate but slower)
+            'multi_resolution': [1024, 1440],  # Multiple resolutions for better matching (IMC-2023 strategy)
             'confidence_threshold': 0.3,  # Min confidence for matches (0-1, higher = fewer but better matches)
             'use_tta': True,  # Test-time augmentation for more robust matching
             'tta_variants': ['orig', 'flip_lr'],  # TTA types: original and horizontal flip
@@ -198,6 +199,81 @@ class LoFTRMatcher(BaseMatcher):
         # Rescale keypoints to original image size
         mkpts1 = mkpts1 / scale1
         mkpts2 = mkpts2 / scale2
+        
+        return mkpts1, mkpts2, mconf
+    
+    def match_pair_multires(
+        self,
+        image1_path: str,
+        image2_path: str,
+        resolutions: Optional[List[int]] = None,
+        bidirectional: bool = True
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Match image pair at multiple resolutions for better accuracy.
+        Based on IMC-2023 winning solution strategy.
+        
+        Args:
+            image1_path: Path to first image
+            image2_path: Path to second image
+            resolutions: List of resolutions to try (default: [1024, 1440])
+            bidirectional: Also match in reverse direction (img2->img1)
+        
+        Returns:
+            Tuple of (mkpts1, mkpts2, mconf) with combined matches from all resolutions
+        """
+        if resolutions is None:
+            resolutions = self.config.get('multi_resolution', [1024, 1440])
+        
+        all_mkpts1 = []
+        all_mkpts2 = []
+        all_mconf = []
+        
+        logger.info(f"Multi-resolution matching at {resolutions} pixels")
+        
+        # Match at each resolution
+        for resolution in resolutions:
+            logger.debug(f"Matching at resolution {resolution}")
+            mkpts1, mkpts2, mconf = self.match_pair(
+                image1_path, image2_path, resize=resolution
+            )
+            
+            if len(mkpts1) > 0:
+                all_mkpts1.append(mkpts1)
+                all_mkpts2.append(mkpts2)
+                all_mconf.append(mconf)
+                logger.debug(f"Resolution {resolution}: found {len(mkpts1)} matches")
+        
+        # Bidirectional matching (reverse direction)
+        if bidirectional and resolutions:
+            logger.debug("Adding bidirectional matches")
+            mkpts2_rev, mkpts1_rev, mconf_rev = self.match_pair(
+                image2_path, image1_path, resize=resolutions[0]
+            )
+            
+            if len(mkpts1_rev) > 0:
+                all_mkpts1.append(mkpts1_rev)
+                all_mkpts2.append(mkpts2_rev)
+                all_mconf.append(mconf_rev)
+                logger.debug(f"Bidirectional: found {len(mkpts1_rev)} matches")
+        
+        # Combine all matches
+        if not all_mkpts1:
+            logger.warning("No matches found at any resolution")
+            return np.array([]).reshape(0, 2), np.array([]).reshape(0, 2), np.array([])
+        
+        mkpts1 = np.concatenate(all_mkpts1, axis=0)
+        mkpts2 = np.concatenate(all_mkpts2, axis=0)
+        mconf = np.concatenate(all_mconf, axis=0)
+        
+        logger.info(f"Total matches before deduplication: {len(mkpts1)}")
+        
+        # Remove duplicates more aggressively for multi-resolution
+        mkpts1, mkpts2, mconf = self._remove_duplicates(
+            mkpts1, mkpts2, mconf, threshold=3.0  # Slightly larger threshold
+        )
+        
+        logger.info(f"Total matches after deduplication: {len(mkpts1)}")
         
         return mkpts1, mkpts2, mconf
     
@@ -452,3 +528,67 @@ class LoFTRMatcher(BaseMatcher):
         
         # Remove duplicates (same match found at different scales)
         return self._remove_duplicates(mkpts1, mkpts2, mconf)
+    
+    def apply_tta(
+        self,
+        img_tensor: torch.Tensor,
+        tta_type: str
+    ) -> Tuple[torch.Tensor, callable]:
+        """
+        Apply test-time augmentation to an image tensor.
+        
+        Args:
+            img_tensor: Input image tensor
+            tta_type: Type of augmentation ('orig', 'flip_lr', 'flip_ud', 'rot90')
+        
+        Returns:
+            Tuple of (augmented_tensor, inverse_transform_function)
+        """
+        h, w = img_tensor.shape[-2:]
+        
+        if tta_type == 'orig':
+            # No augmentation - identity transform
+            return img_tensor, lambda kpts: kpts
+        
+        elif tta_type == 'flip_lr':
+            # Horizontal flip
+            aug_tensor = torch.flip(img_tensor, dims=[-1])
+            
+            def inv_transform(kpts):
+                # Flip x-coordinates back
+                kpts_copy = kpts.copy()
+                kpts_copy[:, 0] = w - 1 - kpts_copy[:, 0]
+                return kpts_copy
+            
+            return aug_tensor, inv_transform
+        
+        elif tta_type == 'flip_ud':
+            # Vertical flip
+            aug_tensor = torch.flip(img_tensor, dims=[-2])
+            
+            def inv_transform(kpts):
+                # Flip y-coordinates back
+                kpts_copy = kpts.copy()
+                kpts_copy[:, 1] = h - 1 - kpts_copy[:, 1]
+                return kpts_copy
+            
+            return aug_tensor, inv_transform
+        
+        elif tta_type == 'rot90':
+            # 90-degree rotation
+            aug_tensor = torch.rot90(img_tensor, k=1, dims=[-2, -1])
+            
+            def inv_transform(kpts):
+                # Rotate coordinates back
+                kpts_copy = kpts.copy()
+                new_x = h - 1 - kpts_copy[:, 1]
+                new_y = kpts_copy[:, 0]
+                kpts_copy[:, 0] = new_x
+                kpts_copy[:, 1] = new_y
+                return kpts_copy
+            
+            return aug_tensor, inv_transform
+        
+        else:
+            logger.warning(f"Unknown TTA type: {tta_type}. Using original.")
+            return img_tensor, lambda kpts: kpts

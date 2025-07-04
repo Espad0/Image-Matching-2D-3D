@@ -17,6 +17,7 @@ import torch
 from tqdm import tqdm
 
 from ..models import LoFTRMatcher, SuperGlueMatcher
+from ..models.multi_method_matcher import MultiMethodMatcher
 from ..utils.image_pairs import ImagePairSelector
 from ..utils.colmap_interface import ColmapInterface
 from .feature_extraction import FeatureExtractor
@@ -68,7 +69,7 @@ class Vision3DPipeline:
         Initialize the Vision3D pipeline.
         
         Args:
-            matcher_type: Type of feature matcher ('loftr', 'superglue', 'hybrid')
+            matcher_type: Type of feature matcher ('loftr', 'superglue', 'hybrid', 'multi')
             device: PyTorch device (defaults to CUDA if available)
             config: Custom configuration dictionary
         """
@@ -135,6 +136,22 @@ class Vision3DPipeline:
             self.superglue_matcher = SuperGlueMatcher(
                 device=self.device,
                 config=self.config['matching']
+            )
+        
+        if self.matcher_type == 'multi':
+            # Multi-method matcher (IMC-2023 approach)
+            multi_config = {
+                'methods': ['loftr', 'superglue'],
+                'adaptive_threshold': 400,
+                'loftr_config': self.config['matching'].copy(),
+                'superglue_config': self.config['matching'].copy(),
+                'dedup_threshold': 3.0
+            }
+            # Update with multi-resolution for LoFTR
+            multi_config['loftr_config']['multi_resolution'] = [1024, 1440]
+            self.multi_matcher = MultiMethodMatcher(
+                device=self.device,
+                config=multi_config
             )
         
         # COLMAP interface
@@ -237,7 +254,17 @@ class Vision3DPipeline:
         
         all_matches = {}
         
-        if self.matcher_type == 'hybrid' and len(image_pairs) >= 400:
+        if self.matcher_type == 'multi':
+            # Use multi-method matcher (IMC-2023 approach)
+            logger.info("Using multi-method matcher with adaptive strategy")
+            matches = self.multi_matcher.match_pairs(
+                image_paths,
+                image_pairs,
+                feature_dir,
+                verbose=verbose
+            )
+            all_matches.update(matches)
+        elif self.matcher_type == 'hybrid' and len(image_pairs) >= 400:
             # Use SuperGlue for larger scenes
             logger.info("Using SuperGlue for large-scale matching")
             matches = self.superglue_matcher.match_pairs(

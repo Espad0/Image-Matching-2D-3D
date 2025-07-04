@@ -190,10 +190,11 @@ class SuperGlueMatcher(BaseMatcher):
         # Match with SuperGlue
         # pred = self.superglue(data)
         
-        # For now, return placeholder data
-        mkpts1 = np.random.rand(100, 2) * img1.shape[::-1]
-        mkpts2 = np.random.rand(100, 2) * img2.shape[::-1]
-        mconf = np.random.rand(100)
+        # For now, return empty arrays since SuperGlue is not implemented
+        logger.debug("SuperGlue is not fully implemented, returning empty matches")
+        mkpts1 = np.array([]).reshape(0, 2)
+        mkpts2 = np.array([]).reshape(0, 2)
+        mconf = np.array([])
         
         return mkpts1, mkpts2, mconf
     
