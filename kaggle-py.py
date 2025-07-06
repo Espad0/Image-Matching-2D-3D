@@ -785,10 +785,8 @@ print(index_pairs)
 if len(index_pairs) >= 400:
     match_superglue(img_fnames, index_pairs, feature_dir=feature_dir, device=device, resize_to_=(600, 800))
     mapper_options = pycolmap.IncrementalMapperOptions()
-    mapper_options.min_num_matches = 3
-    mapper_options.ba_local_max_refinements = 2
+    # Use default mapper options - specific IMC options not available in this pycolmap version
 else:
     match_loftr_superglue(img_fnames, index_pairs, feature_dir=feature_dir, device=device, resize_to_=(600, 800))
     mapper_options = pycolmap.IncrementalMapperOptions()
-    mapper_options.min_num_matches = 3
-    mapper_options.ba_local_max_refinements = 2
+    # Use default mapper options - specific IMC options not available in this pycolmap version
