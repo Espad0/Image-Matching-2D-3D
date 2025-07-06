@@ -161,3 +161,4 @@ cache/
 test.py
 
 CLAUDE.md
+.claude/settings.local.json

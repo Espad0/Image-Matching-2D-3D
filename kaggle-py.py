@@ -22,7 +22,7 @@ from copy import deepcopy
 
 
 
-device=torch.device('cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class SuperGlueCustomMatchingV2(torch.nn.Module):
     """ Image Matching Frontend (SuperPoint + SuperGlue) """
@@ -604,7 +604,7 @@ def get_global_desc(fnames, model, device=torch.device("cpu")):
 def match_loftr_superglue(img_fnames,
                    index_pairs,
                    feature_dir = '.featureout_loftr',
-                   device=torch.device('cuda'),
+                   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
                    min_matches=15, resize_to_ = (640, 480)):
 
     with h5py.File(f'{feature_dir}/matches_loftr.h5', mode='w') as f_match:
@@ -687,7 +687,7 @@ def match_loftr_superglue(img_fnames,
 def match_superglue(img_fnames,
                    index_pairs,
                    feature_dir = '.featureout_loftr',
-                   device=torch.device('cuda'),
+                   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
                    min_matches=15, resize_to_ = (640, 480)):
 
     with h5py.File(f'{feature_dir}/matches_loftr.h5', mode='w') as f_match:
