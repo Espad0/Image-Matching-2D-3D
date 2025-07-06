@@ -7,12 +7,10 @@ import h5py
 from tqdm import tqdm
 from PIL import Image, ExifTags
 import sys
+import warnings
 
 def array_to_blob(array):
-    if IS_PYTHON3:
-        return array.tostring()
-    else:
-        return np.getbuffer(array)
+    return array.tobytes()
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -119,39 +117,18 @@ class COLMAPDatabase(sqlite3.Connection):
             (pair_id,) + matches.shape + (array_to_blob(matches), config,
              array_to_blob(F), array_to_blob(E), array_to_blob(H)))
 
-def add_keypoints(db, h5_path, image_path, img_ext, camera_model, single_camera = True):
-    keypoint_f = h5py.File(os.path.join(h5_path, 'keypoints.h5'), 'r')
-
-    camera_id = None
-    fname_to_id = {}
-    for filename in tqdm(list(keypoint_f.keys())):
-        keypoints = keypoint_f[filename][()]
-
-        fname_with_ext = filename# + img_ext
-        path = os.path.join(image_path, fname_with_ext)
-        if not os.path.isfile(path):
-            raise IOError(f'Invalid image path {path}')
-
-        if camera_id is None or not single_camera:
-            camera_id = create_camera(db, path, camera_model)
-        image_id = db.add_image(fname_with_ext, camera_id)
-        fname_to_id[filename] = image_id
-
-        db.add_keypoints(image_id, keypoints)
-
-    return fname_to_id
 
 def add_matches(db, h5_path, fname_to_id):
     match_file = h5py.File(os.path.join(h5_path, 'matches.h5'), 'r')
     
     added = set()
-    n_keys = len(match_file.keys())
+    n_keys = len(match_file.keys())  # type: ignore
     n_total = (n_keys * (n_keys - 1)) // 2
 
     with tqdm(total=n_total) as pbar:
-        for key_1 in match_file.keys():
+        for key_1 in match_file.keys():  # type: ignore
             group = match_file[key_1]
-            for key_2 in group.keys():
+            for key_2 in group.keys():  # type: ignore
                 id_1 = fname_to_id[key_1]
                 id_2 = fname_to_id[key_2]
 
@@ -160,7 +137,7 @@ def add_matches(db, h5_path, fname_to_id):
                     warnings.warn(f'Pair {pair_id} ({id_1}, {id_2}) already added!')
                     continue
             
-                matches = group[key_2][()]
+                matches = np.array(group[key_2])  # type: ignore
                 db.add_matches(id_1, id_2, matches)
 
                 added.add(pair_id)
@@ -195,7 +172,7 @@ def add_keypoints(db, h5_path, image_path, img_ext, camera_model, single_camera 
     camera_id = None
     fname_to_id = {}
     for filename in tqdm(list(keypoint_f.keys())):
-        keypoints = keypoint_f[filename][()]
+        keypoints = np.array(keypoint_f[filename])
 
         fname_with_ext = filename# + img_ext
         path = os.path.join(image_path, fname_with_ext)
