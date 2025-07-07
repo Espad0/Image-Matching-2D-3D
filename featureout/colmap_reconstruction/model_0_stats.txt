@@ -1,4 +1,4 @@
 Reconstruction Statistics
 ========================
-Number of images: 18
-Number of 3D points: 172127
+Number of images: 4
+Number of 3D points: 1976
