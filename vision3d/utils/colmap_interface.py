@@ -5,14 +5,180 @@ This module provides a clean interface to COLMAP functionality,
 handling database creation, feature import, and reconstruction.
 """
 
+import os
 import sqlite3
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import logging
 import h5py
+import pycolmap
+from collections import defaultdict
+from copy import deepcopy
 
 logger = logging.getLogger(__name__)
+
+
+# COLMAP Database utilities
+def array_to_blob(array: np.ndarray) -> bytes:
+    """Convert numpy array to blob for SQLite storage."""
+    return array.tobytes()
+
+
+def image_ids_to_pair_id(image_id1: int, image_id2: int, max_image_id: int = 2**31 - 1) -> int:
+    """Convert pair of image IDs to unique pair ID."""
+    if image_id1 > image_id2:
+        image_id1, image_id2 = image_id2, image_id1
+    return image_id1 * max_image_id + image_id2
+
+
+def pair_id_to_image_ids(pair_id: int, max_image_id: int = 2**31 - 1) -> Tuple[int, int]:
+    """Convert pair ID back to image IDs."""
+    image_id2 = pair_id % max_image_id
+    image_id1 = (pair_id - image_id2) // max_image_id
+    return image_id1, image_id2
+
+
+def get_focal_length(image_path: str, err_on_default: bool = False) -> float:
+    """
+    Extract focal length from image EXIF data.
+    
+    Args:
+        image_path: Path to the image file
+        err_on_default: If True, raise error when focal length not found
+        
+    Returns:
+        Focal length in pixels
+    """
+    from PIL import Image, ExifTags
+    
+    image = Image.open(image_path)
+    max_size = max(image.size)
+    
+    exif = image.getexif()
+    focal = None
+    if exif is not None:
+        focal_35mm = None
+        # https://github.com/colmap/colmap/blob/d3a29e203ab69e91eda938d6e56e1c7339d62a99/src/util/bitmap.cc#L299
+        for tag, value in exif.items():
+            focal_35mm = None
+            if ExifTags.TAGS.get(tag, None) == 'FocalLengthIn35mmFilm':
+                focal_35mm = float(value)
+                break
+        
+        if focal_35mm is not None:
+            focal = focal_35mm / 35. * max_size
+    
+    if focal is None:
+        if err_on_default:
+            raise RuntimeError("Failed to find focal length")
+        
+        # failed to find it in exif, use prior
+        FOCAL_PRIOR = 1.2
+        focal = FOCAL_PRIOR * max_size
+        logger.warning(f"No focal length found for {image_path}, using prior {FOCAL_PRIOR}")
+    
+    return focal
+
+
+def process_matches_to_unique_keypoints(feature_dir: str) -> None:
+    """
+    Process raw matches to extract unique keypoints and clean match indices.
+    
+    This function reads the raw matches, identifies unique keypoints across
+    all images, and creates cleaned match indices that reference these
+    unique keypoints.
+    """
+    logger.info("Processing matches to extract unique keypoints")
+    
+    # Import function from image_pairs to avoid circular import
+    from .image_pairs import get_unique_indices
+    
+    # Collect all keypoints and match indices
+    keypoints = defaultdict(list)
+    match_indices = defaultdict(dict)
+    total_keypoints = defaultdict(int)
+    
+    # Read raw matches
+    with h5py.File(f'{feature_dir}/matches_loftr.h5', mode='r') as f:
+        for key1 in f.keys():
+            group = f[key1]
+            for key2 in group.keys():
+                matches = group[key2][...]
+                
+                # Extract keypoints
+                keypoints[key1].append(matches[:, :2])
+                keypoints[key2].append(matches[:, 2:])
+                
+                # Create match indices
+                import torch
+                current_match = torch.arange(len(matches)).reshape(-1, 1).repeat(1, 2)
+                current_match[:, 0] += total_keypoints[key1]
+                current_match[:, 1] += total_keypoints[key2]
+                
+                total_keypoints[key1] += len(matches)
+                total_keypoints[key2] += len(matches)
+                match_indices[key1][key2] = current_match
+    
+    # Round keypoints for unique detection
+    for k in keypoints.keys():
+        keypoints[k] = np.round(np.concatenate(keypoints[k], axis=0))
+    
+    # Find unique keypoints
+    unique_keypoints = {}
+    unique_match_indices = {}
+    
+    for k in keypoints.keys():
+        import torch
+        unique_kpts, unique_reverse_indices = torch.unique(
+            torch.from_numpy(keypoints[k]),
+            dim=0,
+            return_inverse=True
+        )
+        unique_match_indices[k] = unique_reverse_indices
+        unique_keypoints[k] = unique_kpts.numpy()
+    
+    # Create cleaned matches
+    cleaned_matches = defaultdict(dict)
+    
+    for k1, group in match_indices.items():
+        for k2, matches in group.items():
+            # Remap to unique indices
+            remapped = deepcopy(matches)
+            remapped[:, 0] = unique_match_indices[k1][remapped[:, 0]]
+            remapped[:, 1] = unique_match_indices[k2][remapped[:, 1]]
+            
+            # Remove duplicates
+            mkpts = np.concatenate([
+                unique_keypoints[k1][remapped[:, 0]],
+                unique_keypoints[k2][remapped[:, 1]]
+            ], axis=1)
+            
+            unique_indices = get_unique_indices(torch.from_numpy(mkpts), dim=0)
+            remapped = remapped[unique_indices]
+            
+            # Ensure one-to-one matching
+            unique_indices1 = get_unique_indices(remapped[:, 0], dim=0)
+            remapped = remapped[unique_indices1]
+            
+            unique_indices2 = get_unique_indices(remapped[:, 1], dim=0)
+            remapped = remapped[unique_indices2]
+            
+            cleaned_matches[k1][k2] = remapped.numpy()
+    
+    # Save unique keypoints
+    with h5py.File(f'{feature_dir}/keypoints.h5', mode='w') as f:
+        for k, kpts in unique_keypoints.items():
+            f[k] = kpts
+    
+    # Save cleaned matches
+    with h5py.File(f'{feature_dir}/matches.h5', mode='w') as f:
+        for k1, group in cleaned_matches.items():
+            group_h5 = f.require_group(k1)
+            for k2, matches in group.items():
+                group_h5[k2] = matches
+    
+    logger.info("Finished processing matches")
 
 
 class ColmapInterface:
@@ -281,6 +447,220 @@ class ColmapInterface:
         options.ba_global_max_refinements = self.config['ba_global_max_refinements']
         
         return options
+    
+    def run_reconstruction(
+        self,
+        database_path: Path,
+        image_path: Path,
+        output_path: Path,
+        min_num_matches: int = 15,
+        exhaustive_matching: bool = True
+    ) -> Dict[int, Any]:
+        """
+        Run COLMAP incremental reconstruction.
+        
+        Args:
+            database_path: Path to COLMAP database
+            image_path: Path to image directory
+            output_path: Path for reconstruction output
+            min_num_matches: Minimum number of matches for valid image pairs
+            exhaustive_matching: If True, run exhaustive matching verification
+            
+        Returns:
+            Reconstruction results
+        """
+        logger.info("Running COLMAP reconstruction")
+        
+        # Create output directory
+        os.makedirs(output_path, exist_ok=True)
+        
+        # Configure pipeline options
+        pipeline_options = pycolmap.IncrementalPipelineOptions()
+        # Configure mapper options through the pipeline options
+        mapper_options = pipeline_options.mapper
+        
+        # Run exhaustive matching if requested
+        if exhaustive_matching:
+            logger.info("Running exhaustive matching verification")
+            pycolmap.match_exhaustive(str(database_path))
+        
+        # Run incremental mapping
+        # By default colmap does not generate a reconstruction if less than 10 images are registered. Lower it to 3.
+        maps = pycolmap.incremental_mapping(
+            database_path=str(database_path),
+            image_path=str(image_path),
+            output_path=str(output_path),
+            options=pipeline_options
+        )
+        
+        logger.info(f"Reconstruction complete. Found {len(maps)} models")
+        
+        # Log reconstruction statistics
+        for idx, reconstruction in maps.items():
+            num_images = len(reconstruction.images)
+            num_points = len(reconstruction.points3D)
+            logger.info(f"Model {idx}: {num_images} images, {num_points} 3D points")
+        
+        return maps
+    
+    def export_reconstruction(
+        self,
+        reconstruction: Any,
+        output_path: str,
+        format: str = 'ply'
+    ) -> None:
+        """
+        Export reconstruction to various formats.
+        
+        Args:
+            reconstruction: COLMAP reconstruction object
+            output_path: Output file path
+            format: Export format ('ply', 'nvm', 'bundler', 'vrml')
+        """
+        try:
+            if format == 'ply':
+                reconstruction.write_text(output_path)
+                logger.info(f"Exported reconstruction to {output_path} in text format")
+            else:
+                logger.warning(f"Export format {format} not implemented, skipping export")
+        except Exception as e:
+            logger.error(f"Failed to export reconstruction: {e}")
+    
+    def import_features_from_h5(
+        self,
+        image_dir: str,
+        feature_dir: str,
+        database_path: str,
+        camera_model: str = None,
+        single_camera: bool = None
+    ) -> Dict[str, int]:
+        """
+        Import features from h5 files to COLMAP database.
+        
+        This is an alternative method that imports from h5 files
+        similar to the original image_matcher.py implementation.
+        
+        Args:
+            image_dir: Directory containing images
+            feature_dir: Directory containing h5 feature files
+            database_path: Path to COLMAP database
+            camera_model: Camera model to use
+            single_camera: Whether to use single camera for all images
+            
+        Returns:
+            Mapping from filename to image ID
+        """
+        camera_model = camera_model or self.config['camera_model']
+        single_camera = single_camera if single_camera is not None else self.config['single_camera']
+        
+        # Create database
+        db = COLMAPDatabase.connect(database_path)
+        db.create_tables()
+        
+        # Import keypoints
+        keypoint_file = h5py.File(os.path.join(feature_dir, 'keypoints.h5'), 'r')
+        
+        camera_id = None
+        fname_to_id = {}
+        
+        logger.info("Importing keypoints to COLMAP database")
+        
+        from tqdm import tqdm
+        for filename in tqdm(list(keypoint_file.keys()), desc="Importing features"):
+            keypoints = np.array(keypoint_file[filename])
+            
+            # Check if image exists
+            image_path = os.path.join(image_dir, filename)
+            if not os.path.isfile(image_path):
+                logger.error(f"Image not found: {image_path}")
+                continue
+            
+            # Create camera if needed
+            if camera_id is None or not single_camera:
+                camera_id = self._create_camera_db(db, image_path, camera_model)
+            
+            # Add image
+            image_id = db.add_image(filename, camera_id)
+            fname_to_id[filename] = image_id
+            
+            # Add keypoints
+            db.add_keypoints(image_id, keypoints)
+        
+        keypoint_file.close()
+        
+        # Import matches
+        match_file = h5py.File(os.path.join(feature_dir, 'matches.h5'), 'r')
+        
+        added = set()
+        n_keys = len(match_file.keys())
+        n_total = (n_keys * (n_keys - 1)) // 2
+        
+        logger.info("Importing matches to COLMAP database")
+        
+        with tqdm(total=n_total, desc="Importing matches") as pbar:
+            for key1 in match_file.keys():
+                group = match_file[key1]
+                for key2 in group.keys():
+                    if key1 not in fname_to_id or key2 not in fname_to_id:
+                        logger.warning(f"Skipping match {key1} - {key2}: image not in database")
+                        continue
+                    
+                    id1 = fname_to_id[key1]
+                    id2 = fname_to_id[key2]
+                    
+                    pair_id = image_ids_to_pair_id(id1, id2)
+                    if pair_id in added:
+                        logger.warning(f"Duplicate pair: {key1} - {key2}")
+                        continue
+                    
+                    matches = np.array(group[key2])
+                    db.add_matches(id1, id2, matches)
+                    
+                    added.add(pair_id)
+                    pbar.update(1)
+        
+        match_file.close()
+        
+        db.commit()
+        db.close()
+        
+        return fname_to_id
+    
+    def _create_camera_db(self, db: COLMAPDatabase, image_path: str, camera_model: str) -> int:
+        """
+        Create camera entry in database (variant for direct db access).
+        
+        Args:
+            db: COLMAP database connection
+            image_path: Path to image
+            camera_model: Camera model type
+            
+        Returns:
+            Camera ID
+        """
+        from PIL import Image
+        
+        image = Image.open(image_path)
+        width, height = image.size
+        
+        focal = get_focal_length(image_path)
+        
+        if camera_model == 'simple-pinhole':
+            model = 0  # simple pinhole
+            param_arr = np.array([focal, width / 2, height / 2])
+        elif camera_model == 'pinhole':
+            model = 1  # pinhole
+            param_arr = np.array([focal, focal, width / 2, height / 2])
+        elif camera_model == 'simple-radial':
+            model = 2  # simple radial
+            param_arr = np.array([focal, width / 2, height / 2, 0.1])
+        elif camera_model == 'opencv':
+            model = 4  # opencv
+            param_arr = np.array([focal, focal, width / 2, height / 2, 0., 0., 0., 0.])
+        else:
+            raise ValueError(f"Unknown camera model: {camera_model}")
+             
+        return db.add_camera(model, width, height, param_arr)
 
 
 class COLMAPDatabase(sqlite3.Connection):
@@ -388,11 +768,11 @@ class COLMAPDatabase(sqlite3.Connection):
         camera_id: Optional[int] = None
     ) -> int:
         """Add camera to database."""
-        params_blob = params.astype(np.float64).tostring()
+        params = np.asarray(params, np.float64)
         
         cursor = self.execute(
             "INSERT INTO cameras VALUES (?, ?, ?, ?, ?, ?)",
-            (camera_id, model, width, height, params_blob, prior_focal_length)
+            (camera_id, model, width, height, array_to_blob(params), prior_focal_length)
         )
         return cursor.lastrowid
     
@@ -400,15 +780,19 @@ class COLMAPDatabase(sqlite3.Connection):
         self,
         name: str,
         camera_id: int,
-        prior_q: np.ndarray = np.zeros(4),
-        prior_t: np.ndarray = np.zeros(3),
+        prior_q: np.ndarray = None,
+        prior_t: np.ndarray = None,
         image_id: Optional[int] = None
     ) -> int:
         """Add image to database."""
+        prior_q = prior_q if prior_q is not None else np.array([1.0, 0.0, 0.0, 0.0])
+        prior_t = prior_t if prior_t is not None else np.zeros(3)
+        
         cursor = self.execute(
             "INSERT INTO images VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (image_id, name, camera_id, prior_q[0], prior_q[1], prior_q[2],
-             prior_q[3], prior_t[0], prior_t[1], prior_t[2])
+            (image_id, name, camera_id, 
+             prior_q[0], prior_q[1], prior_q[2], prior_q[3],
+             prior_t[0], prior_t[1], prior_t[2])
         )
         return cursor.lastrowid
     
@@ -418,23 +802,19 @@ class COLMAPDatabase(sqlite3.Connection):
         assert keypoints.shape[1] in [2, 4, 6]
         
         keypoints = np.asarray(keypoints, np.float32)
-        keypoints_blob = keypoints.tostring()
         
         self.execute(
             "INSERT INTO keypoints VALUES (?, ?, ?, ?)",
-            (image_id, keypoints.shape[0], keypoints.shape[1], keypoints_blob)
+            (image_id,) + keypoints.shape + (array_to_blob(keypoints),)
         )
     
     def add_descriptors(self, image_id: int, descriptors: np.ndarray):
         """Add descriptors to database."""
-        assert len(descriptors.shape) == 2
-        assert descriptors.dtype == np.uint8
-        
-        descriptors_blob = descriptors.tostring()
+        descriptors = np.ascontiguousarray(descriptors, np.uint8)
         
         self.execute(
             "INSERT INTO descriptors VALUES (?, ?, ?, ?)",
-            (image_id, descriptors.shape[0], descriptors.shape[1], descriptors_blob)
+            (image_id,) + descriptors.shape + (array_to_blob(descriptors),)
         )
     
     def add_matches(self, image_id1: int, image_id2: int, matches: np.ndarray):
@@ -444,20 +824,40 @@ class COLMAPDatabase(sqlite3.Connection):
         
         if image_id1 > image_id2:
             matches = matches[:, ::-1]
-            image_id1, image_id2 = image_id2, image_id1
         
-        pair_id = self._image_ids_to_pair_id(image_id1, image_id2)
+        pair_id = image_ids_to_pair_id(image_id1, image_id2)
         matches = np.asarray(matches, np.uint32)
-        matches_blob = matches.tostring()
         
         self.execute(
             "INSERT INTO matches VALUES (?, ?, ?, ?)",
-            (pair_id, matches.shape[0], matches.shape[1], matches_blob)
+            (pair_id,) + matches.shape + (array_to_blob(matches),)
         )
     
-    def _image_ids_to_pair_id(self, image_id1: int, image_id2: int) -> int:
-        """Convert image IDs to pair ID."""
-        MAX_IMAGE_ID = 2**31 - 1
+    def add_two_view_geometry(self, image_id1: int, image_id2: int,
+                            matches: np.ndarray,
+                            F: np.ndarray = None,
+                            E: np.ndarray = None,
+                            H: np.ndarray = None,
+                            config: int = 2) -> None:
+        """Add two-view geometry for an image pair."""
+        assert len(matches.shape) == 2
+        assert matches.shape[1] == 2
+        
         if image_id1 > image_id2:
-            image_id1, image_id2 = image_id2, image_id1
-        return image_id1 * MAX_IMAGE_ID + image_id2
+            matches = matches[:, ::-1]
+        
+        F = F if F is not None else np.eye(3)
+        E = E if E is not None else np.eye(3)
+        H = H if H is not None else np.eye(3)
+        
+        pair_id = image_ids_to_pair_id(image_id1, image_id2)
+        matches = np.asarray(matches, np.uint32)
+        F = np.asarray(F, dtype=np.float64)
+        E = np.asarray(E, dtype=np.float64)
+        H = np.asarray(H, dtype=np.float64)
+        
+        self.execute(
+            "INSERT INTO two_view_geometries VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (pair_id,) + matches.shape + (array_to_blob(matches), config,
+             array_to_blob(F), array_to_blob(E), array_to_blob(H))
+        )
