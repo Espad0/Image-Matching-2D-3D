@@ -164,3 +164,11 @@ test.py
 
 CLAUDE.md
 .claude/settings.local.json
+featureout/colmap_reconstruction/model_0/cameras.txt
+
+featureout/colmap_reconstruction/model_0/frames.txt
+featureout/colmap_reconstruction/model_0/images.txt
+featureout/colmap_reconstruction/model_0/points3D.txt
+featureout/colmap_reconstruction/model_0/rigs.txt
+featureout/colmap_reconstruction/model_0/stats.txt
+featureout/colmap_reconstruction/model_1/cameras.txt

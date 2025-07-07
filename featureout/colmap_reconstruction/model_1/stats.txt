@@ -1,0 +1,55 @@
+Reconstruction Statistics
+========================
+
+Number of images: 14
+Number of 3D points: 13214
+Mean reprojection error: 1.1562
+
+Point cloud bounds:
+  X: [-4.155, 3.503]
+  Y: [-11.924, 2.181]
+  Z: [-7.851, 12.867]
+
+Camera statistics:
+  Image 3DOM_FBK_IMG_1516.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 807.48
+  Image 3DOM_FBK_IMG_1520.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 813.25
+  Image 3DOM_FBK_IMG_1524.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 815.81
+  Image 3DOM_FBK_IMG_1528.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 804.44
+  Image 3DOM_FBK_IMG_1533.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 811.18
+  Image 3DOM_FBK_IMG_1537.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 801.12
+  Image 3DOM_FBK_IMG_1539.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 804.73
+  Image 3DOM_FBK_IMG_1541.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 803.37
+  Image 3DOM_FBK_IMG_1552.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 808.97
+  Image 3DOM_FBK_IMG_1556.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 1473.94
+  Image 3DOM_FBK_IMG_1563.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 1478.08
+  Image 3DOM_FBK_IMG_1566.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 1440.69
+  Image 3DOM_FBK_IMG_1570.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 1489.36
+  Image 3DOM_FBK_IMG_1573.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 1504.11

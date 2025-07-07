@@ -671,6 +671,12 @@ class ColmapInterface:
         """
         logger.info("Running COLMAP reconstruction")
         
+        # Clear existing output directory if it exists
+        import shutil
+        if os.path.exists(output_path):
+            logger.info(f"Clearing existing output directory: {output_path}")
+            shutil.rmtree(output_path)
+        
         # Create output directory
         os.makedirs(output_path, exist_ok=True)
         
@@ -720,7 +726,6 @@ class ColmapInterface:
         try:
             if format == 'ply':
                 # For PLY export, create directory and export
-                import os
                 output_dir = os.path.dirname(output_path)
                 os.makedirs(output_dir, exist_ok=True)
                 # COLMAP's write_text expects a directory, not a file path
