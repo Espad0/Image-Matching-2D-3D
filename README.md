@@ -20,7 +20,28 @@ reconstruction = pipeline.reconstruct(
 )
 ```
 
-[TODO: image displaying the transformation from multiple 2D photos to a 3D model]
+
+<table>
+<tr>
+<td width="50%">
+<h4 align="center">Input: Multiple 2D Photos</h4>
+<p align="center">
+<img src="examples/images/3DOM_FBK_IMG_1516.png" width="30%" />
+<img src="examples/images/3DOM_FBK_IMG_1520.png" width="30%" />
+<img src="examples/images/3DOM_FBK_IMG_1524.png" width="30%" />
+<img src="examples/images/3DOM_FBK_IMG_1528.png" width="30%" />
+<img src="examples/images/3DOM_FBK_IMG_1533.png" width="30%" />
+<img src="examples/images/3DOM_FBK_IMG_1537.png" width="30%" />
+</p>
+</td>
+<td width="50%">
+<h4 align="center">Output: 3D Reconstruction</h4>
+<p align="center">
+<img src="examples/columns.gif" width="90%" />
+</p>
+</td>
+</tr>
+</table>
 
 **Key Features:**
 - 🚀 **One-Step Reconstruction**: Generates a 3D model from raw images with a single python command
