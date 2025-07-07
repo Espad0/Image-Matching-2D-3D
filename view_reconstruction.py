@@ -105,7 +105,7 @@ def main():
     parser = argparse.ArgumentParser(description="View COLMAP 3D reconstruction")
     parser.add_argument("--input", type=str, default="featureout/colmap_rec_LoFTR/0/points3D.bin",
                        help="Path to points3D.bin file")
-    parser.add_argument("--output", type=str, default="reconstruction.npz",
+    parser.add_argument("--output", type=str, default="featureout/reconstruction.npz",
                        help="Output path for saved point cloud")
     parser.add_argument("--sample-rate", type=int, default=1,
                        help="Subsample rate for visualization (1 = show all points)")
@@ -128,6 +128,8 @@ def main():
     print(f"Loaded {len(points3D)} 3D points")
     
     # Save point cloud
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     xyz_array, rgb_array = save_point_cloud(points3D, args.output)
     
     # Print statistics
