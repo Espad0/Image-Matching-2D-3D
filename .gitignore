@@ -143,6 +143,8 @@ colmap.db
 *.ply
 *.obj
 *.mtl
+*.bin
+*.npz
 
 # Data
 data/

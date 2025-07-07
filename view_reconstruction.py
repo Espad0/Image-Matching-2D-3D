@@ -103,7 +103,7 @@ def visualize_point_cloud(points3D, sample_rate=1, point_size=1):
 
 def main():
     parser = argparse.ArgumentParser(description="View COLMAP 3D reconstruction")
-    parser.add_argument("--input", type=str, default="featureout/colmap_rec_LoFTR/0/points3D.bin",
+    parser.add_argument("--input", type=str, default="featureout/colmap_reconstruction/0/points3D.bin",
                        help="Path to points3D.bin file")
     parser.add_argument("--output", type=str, default="featureout/reconstruction.npz",
                        help="Output path for saved point cloud")
