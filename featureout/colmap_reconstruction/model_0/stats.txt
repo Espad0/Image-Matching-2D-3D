@@ -1,0 +1,25 @@
+Reconstruction Statistics
+========================
+
+Number of images: 4
+Number of 3D points: 1976
+Mean reprojection error: 1.2161
+
+Point cloud bounds:
+  X: [-1.744, 3.409]
+  Y: [-3.408, -0.330]
+  Z: [1.087, 5.666]
+
+Camera statistics:
+  Image 3DOM_FBK_IMG_1524.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 818.92
+  Image 3DOM_FBK_IMG_1528.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 800.03
+  Image 3DOM_FBK_IMG_1533.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 810.54
+  Image 3DOM_FBK_IMG_1537.png:
+    Camera model: SIMPLE_RADIAL
+    Focal length: 796.45

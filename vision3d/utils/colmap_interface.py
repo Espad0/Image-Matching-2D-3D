@@ -81,6 +81,206 @@ def get_focal_length(image_path: str, err_on_default: bool = False) -> float:
     return focal
 
 
+class COLMAPDatabase(sqlite3.Connection):
+    """
+    COLMAP database interface.
+    
+    Based on COLMAP's database.py script.
+    """
+    
+    @staticmethod
+    def connect(database_path: str):
+        """Connect to COLMAP database."""
+        return sqlite3.connect(database_path, factory=COLMAPDatabase)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.create_tables()
+    
+    def create_tables(self):
+        """Create necessary COLMAP tables."""
+        # Create cameras table
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS cameras (
+                camera_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                model INTEGER NOT NULL,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL,
+                params BLOB,
+                prior_focal_length INTEGER NOT NULL
+            )
+        """)
+        
+        # Create images table
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS images (
+                image_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                name TEXT NOT NULL UNIQUE,
+                camera_id INTEGER NOT NULL,
+                prior_qw REAL,
+                prior_qx REAL,
+                prior_qy REAL,
+                prior_qz REAL,
+                prior_tx REAL,
+                prior_ty REAL,
+                prior_tz REAL,
+                FOREIGN KEY(camera_id) REFERENCES cameras(camera_id)
+            )
+        """)
+        
+        # Create keypoints table
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS keypoints (
+                image_id INTEGER PRIMARY KEY NOT NULL,
+                rows INTEGER NOT NULL,
+                cols INTEGER NOT NULL,
+                data BLOB,
+                FOREIGN KEY(image_id) REFERENCES images(image_id) ON DELETE CASCADE
+            )
+        """)
+        
+        # Create matches table
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS matches (
+                pair_id INTEGER PRIMARY KEY NOT NULL,
+                rows INTEGER NOT NULL,
+                cols INTEGER NOT NULL,
+                data BLOB
+            )
+        """)
+        
+        # Create descriptors table
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS descriptors (
+                image_id INTEGER PRIMARY KEY NOT NULL,
+                rows INTEGER NOT NULL,
+                cols INTEGER NOT NULL,
+                data BLOB,
+                FOREIGN KEY(image_id) REFERENCES images(image_id) ON DELETE CASCADE
+            )
+        """)
+        
+        # Create two_view_geometries table
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS two_view_geometries (
+                pair_id INTEGER PRIMARY KEY NOT NULL,
+                rows INTEGER NOT NULL,
+                cols INTEGER NOT NULL,
+                data BLOB,
+                config INTEGER NOT NULL,
+                F BLOB,
+                E BLOB,
+                H BLOB
+            )
+        """)
+        
+        self.commit()
+    
+    def add_camera(
+        self,
+        model: int,
+        width: int,
+        height: int,
+        params: np.ndarray,
+        prior_focal_length: bool = False,
+        camera_id: Optional[int] = None
+    ) -> int:
+        """Add camera to database."""
+        params = np.asarray(params, np.float64)
+        
+        cursor = self.execute(
+            "INSERT INTO cameras VALUES (?, ?, ?, ?, ?, ?)",
+            (camera_id, model, width, height, array_to_blob(params), prior_focal_length)
+        )
+        return cursor.lastrowid
+    
+    def add_image(
+        self,
+        name: str,
+        camera_id: int,
+        prior_q: np.ndarray = None,
+        prior_t: np.ndarray = None,
+        image_id: Optional[int] = None
+    ) -> int:
+        """Add image to database."""
+        prior_q = prior_q if prior_q is not None else np.array([1.0, 0.0, 0.0, 0.0])
+        prior_t = prior_t if prior_t is not None else np.zeros(3)
+        
+        cursor = self.execute(
+            "INSERT INTO images VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (image_id, name, camera_id, 
+             prior_q[0], prior_q[1], prior_q[2], prior_q[3],
+             prior_t[0], prior_t[1], prior_t[2])
+        )
+        return cursor.lastrowid
+    
+    def add_keypoints(self, image_id: int, keypoints: np.ndarray):
+        """Add keypoints to database."""
+        assert len(keypoints.shape) == 2
+        assert keypoints.shape[1] in [2, 4, 6]
+        
+        keypoints = np.asarray(keypoints, np.float32)
+        
+        self.execute(
+            "INSERT INTO keypoints VALUES (?, ?, ?, ?)",
+            (image_id,) + keypoints.shape + (array_to_blob(keypoints),)
+        )
+    
+    def add_descriptors(self, image_id: int, descriptors: np.ndarray):
+        """Add descriptors to database."""
+        descriptors = np.ascontiguousarray(descriptors, np.uint8)
+        
+        self.execute(
+            "INSERT INTO descriptors VALUES (?, ?, ?, ?)",
+            (image_id,) + descriptors.shape + (array_to_blob(descriptors),)
+        )
+    
+    def add_matches(self, image_id1: int, image_id2: int, matches: np.ndarray):
+        """Add matches to database."""
+        assert len(matches.shape) == 2
+        assert matches.shape[1] == 2
+        
+        if image_id1 > image_id2:
+            matches = matches[:, ::-1]
+        
+        pair_id = image_ids_to_pair_id(image_id1, image_id2)
+        matches = np.asarray(matches, np.uint32)
+        
+        self.execute(
+            "INSERT INTO matches VALUES (?, ?, ?, ?)",
+            (pair_id,) + matches.shape + (array_to_blob(matches),)
+        )
+    
+    def add_two_view_geometry(self, image_id1: int, image_id2: int,
+                            matches: np.ndarray,
+                            F: np.ndarray = None,
+                            E: np.ndarray = None,
+                            H: np.ndarray = None,
+                            config: int = 2) -> None:
+        """Add two-view geometry for an image pair."""
+        assert len(matches.shape) == 2
+        assert matches.shape[1] == 2
+        
+        if image_id1 > image_id2:
+            matches = matches[:, ::-1]
+        
+        F = F if F is not None else np.eye(3)
+        E = E if E is not None else np.eye(3)
+        H = H if H is not None else np.eye(3)
+        
+        pair_id = image_ids_to_pair_id(image_id1, image_id2)
+        matches = np.asarray(matches, np.uint32)
+        F = np.asarray(F, dtype=np.float64)
+        E = np.asarray(E, dtype=np.float64)
+        H = np.asarray(H, dtype=np.float64)
+        
+        self.execute(
+            "INSERT INTO two_view_geometries VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (pair_id,) + matches.shape + (array_to_blob(matches), config,
+             array_to_blob(F), array_to_blob(E), array_to_blob(H))
+        )
+
+
 def process_matches_to_unique_keypoints(feature_dir: str) -> None:
     """
     Process raw matches to extract unique keypoints and clean match indices.
@@ -514,13 +714,18 @@ class ColmapInterface:
         
         Args:
             reconstruction: COLMAP reconstruction object
-            output_path: Output file path
+            output_path: Output file/directory path
             format: Export format ('ply', 'nvm', 'bundler', 'vrml')
         """
         try:
             if format == 'ply':
-                reconstruction.write_text(output_path)
-                logger.info(f"Exported reconstruction to {output_path} in text format")
+                # For PLY export, create directory and export
+                import os
+                output_dir = os.path.dirname(output_path)
+                os.makedirs(output_dir, exist_ok=True)
+                # COLMAP's write_text expects a directory, not a file path
+                reconstruction.write_text(output_dir)
+                logger.info(f"Exported reconstruction to {output_dir} in text format")
             else:
                 logger.warning(f"Export format {format} not implemented, skipping export")
         except Exception as e:

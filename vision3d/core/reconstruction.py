@@ -49,11 +49,9 @@ class ReconstructionEngine:
                 'ba_local_max_refinements': 2,
                 'ba_global_max_refinements': 10
             },
-            'reconstruction': {
-                'min_num_matches': 15,
-                'exhaustive_matching': True,
-                'export_format': 'ply'
-            }
+            'min_num_matches': 15,
+            'exhaustive_matching': True,
+            'export_format': 'ply'
         }
     
     def reconstruct_from_features(
@@ -118,8 +116,8 @@ class ReconstructionEngine:
                 database_path=database_path,
                 image_path=Path(image_dir),
                 output_path=reconstruction_path,
-                min_num_matches=self.config['reconstruction']['min_num_matches'],
-                exhaustive_matching=self.config['reconstruction']['exhaustive_matching']
+                min_num_matches=self.config['min_num_matches'],
+                exhaustive_matching=self.config['exhaustive_matching']
             )
             
             results['reconstructions'] = maps
@@ -130,7 +128,7 @@ class ReconstructionEngine:
                 self._export_reconstructions(
                     maps,
                     reconstruction_path,
-                    self.config['reconstruction']['export_format']
+                    self.config['export_format']
                 )
         
         return results
@@ -196,8 +194,8 @@ class ReconstructionEngine:
                 database_path=database_path,
                 image_path=Path(image_dir),
                 output_path=reconstruction_path,
-                min_num_matches=self.config['reconstruction']['min_num_matches'],
-                exhaustive_matching=self.config['reconstruction']['exhaustive_matching']
+                min_num_matches=self.config['min_num_matches'],
+                exhaustive_matching=self.config['exhaustive_matching']
             )
             
             results['reconstructions'] = maps
@@ -208,7 +206,7 @@ class ReconstructionEngine:
                 self._export_reconstructions(
                     maps,
                     reconstruction_path,
-                    self.config['reconstruction']['export_format']
+                    self.config['export_format']
                 )
         
         return results
@@ -276,7 +274,7 @@ class ReconstructionEngine:
                 for img_id, image in reconstruction.images.items():
                     camera = reconstruction.cameras[image.camera_id]
                     f.write(f"  Image {image.name}:\n")
-                    f.write(f"    Camera model: {camera.model_name}\n")
+                    f.write(f"    Camera model: {camera.model.name}\n")
                     f.write(f"    Focal length: {camera.focal_length:.2f}\n")
     
     def visualize_reconstruction(

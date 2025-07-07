@@ -44,7 +44,9 @@ class FeatureExtractor:
             config: Configuration dictionary
             device: PyTorch device
         """
-        self.config = config or self._get_default_config()
+        self.config = self._get_default_config()
+        if config:
+            self.config.update(config)
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self._matchers = {}
     
@@ -146,12 +148,12 @@ class FeatureExtractor:
             try:
                 # Get matches from different methods
                 mkpts0_loftr, mkpts1_loftr, conf_loftr = loftr_matcher.match_pair(
-                    fname1, fname2, self.config['loftr_input_size']
+                    fname1, fname2, input_longside=self.config.get('loftr_input_size', 1024)
                 )
                 
                 # Also match in reverse direction for LoFTR
                 mkpts1_loftr_lr, mkpts0_loftr_lr, conf_loftr_lr = loftr_matcher.match_pair(
-                    fname2, fname1, self.config['loftr_input_size']
+                    fname2, fname1, input_longside=self.config.get('loftr_input_size', 1024)
                 )
                 
                 # SuperGlue at multiple scales
@@ -159,7 +161,7 @@ class FeatureExtractor:
                 
                 for size in self.config['superglue_sizes']:
                     mkpts0_sg, mkpts1_sg, conf_sg = superglue_matcher.match_pair(
-                        fname1, fname2, size,
+                        fname1, fname2, input_longside=size,
                         tta_groups=[('orig', 'orig'), ('flip_lr', 'flip_lr')]
                     )
                     all_sg_mkpts0.append(mkpts0_sg)
@@ -167,17 +169,32 @@ class FeatureExtractor:
                     all_sg_conf.append(conf_sg)
                 
                 # Combine all matches
-                mkpts0 = np.concatenate([
-                    mkpts0_loftr, mkpts0_loftr_lr
-                ] + all_sg_mkpts0, axis=0)
+                all_mkpts0 = []
+                all_mkpts1 = []
+                all_conf = []
                 
-                mkpts1 = np.concatenate([
-                    mkpts1_loftr, mkpts1_loftr_lr
-                ] + all_sg_mkpts1, axis=0)
+                if len(mkpts0_loftr) > 0:
+                    all_mkpts0.append(mkpts0_loftr)
+                    all_mkpts1.append(mkpts1_loftr)
+                    all_conf.append(conf_loftr)
                 
-                confidence = np.concatenate([
-                    conf_loftr, conf_loftr_lr
-                ] + all_sg_conf, axis=0)
+                if len(mkpts0_loftr_lr) > 0:
+                    all_mkpts0.append(mkpts0_loftr_lr)
+                    all_mkpts1.append(mkpts1_loftr_lr)
+                    all_conf.append(conf_loftr_lr)
+                
+                all_mkpts0.extend(all_sg_mkpts0)
+                all_mkpts1.extend(all_sg_mkpts1)
+                all_conf.extend(all_sg_conf)
+                
+                if all_mkpts0:
+                    mkpts0 = np.concatenate(all_mkpts0, axis=0)
+                    mkpts1 = np.concatenate(all_mkpts1, axis=0)
+                    confidence = np.concatenate(all_conf, axis=0)
+                else:
+                    mkpts0 = np.array([])
+                    mkpts1 = np.array([])
+                    confidence = np.array([])
                 
                 # Save if enough matches
                 if len(mkpts0) >= self.config['min_matches']:
@@ -224,7 +241,7 @@ class FeatureExtractor:
                 
                 for size in self.config['superglue_sizes']:
                     mkpts0, mkpts1, conf = superglue_matcher.match_pair(
-                        fname1, fname2, size
+                        fname1, fname2, input_longside=size
                     )
                     all_mkpts0.append(mkpts0)
                     all_mkpts1.append(mkpts1)

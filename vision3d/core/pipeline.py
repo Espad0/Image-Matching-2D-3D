@@ -114,9 +114,14 @@ class Vision3DPipeline:
     def reconstruction_engine(self) -> ReconstructionEngine:
         """Get or create reconstruction engine."""
         if self._reconstruction_engine is None:
-            self._reconstruction_engine = ReconstructionEngine(
-                config={'colmap': self.config['reconstruction']}
-            )
+            # Prepare reconstruction config
+            recon_config = {
+                'colmap': self.config['reconstruction'],
+                'min_num_matches': self.config['reconstruction'].get('min_num_matches', 15),
+                'exhaustive_matching': self.config['reconstruction'].get('exhaustive_matching', True),
+                'export_format': self.config['reconstruction'].get('export_format', 'ply')
+            }
+            self._reconstruction_engine = ReconstructionEngine(config=recon_config)
         return self._reconstruction_engine
     
     def reconstruct(
@@ -344,7 +349,7 @@ class Vision3DPipeline:
         # Export cameras
         for cam_id, camera in reconstruction.cameras.items():
             data['cameras'][str(cam_id)] = {
-                'model': camera.model_name,
+                'model': camera.model.name,
                 'width': camera.width,
                 'height': camera.height,
                 'params': camera.params.tolist()

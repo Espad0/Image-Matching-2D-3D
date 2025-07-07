@@ -105,6 +105,8 @@ Examples:
             'min_pairs_per_image': args.min_pairs,
             'similarity_threshold': args.similarity_threshold,
             'exhaustive_if_less_than': args.exhaustive_threshold,
+            'model_name': 'tf_efficientnet_b7',
+            'model_path': './efficientnet/tf_efficientnet_b7.pth'
         },
         'feature_extraction': {
             'min_matches': args.min_matches,
