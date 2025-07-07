@@ -32,6 +32,9 @@ reconstruction = pipeline.reconstruct(
 <img src="examples/images/3DOM_FBK_IMG_1528.png" width="30%" />
 <img src="examples/images/3DOM_FBK_IMG_1533.png" width="30%" />
 <img src="examples/images/3DOM_FBK_IMG_1537.png" width="30%" />
+<img src="examples/images/3DOM_FBK_IMG_1541.png" width="30%" />
+<img src="examples/images/3DOM_FBK_IMG_1546.png" width="30%" />
+<img src="examples/images/3DOM_FBK_IMG_1552.png" width="30%" />
 </p>
 </td>
 <td width="50%">
