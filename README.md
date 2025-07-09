@@ -7,7 +7,9 @@
 
 ## 🚀 Overview
 
-Vision3D is a one-step solution for 3D scene reconstruction from photographs. Provide a folder of images, execute a single command, and obtain a high-quality 3D model. The library combines deep learning with classical computer vision, abstracting away complexity while remaining fully configurable.
+Vision3D is a one-step solution for 3D scene reconstruction from photographs.
+
+Provide a folder of images, execute a single command, and obtain a high-quality 3D model.
 
 ```python
 from vision3d import Vision3DPipeline
@@ -55,7 +57,7 @@ reconstruction = pipeline.reconstruct(
 
 ## 📋 Table of Contents
 
-- [Core Technologies](#core-technologies)
+- [Core Technologies](#-core-technologies)
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
 - [Advanced Usage](#-advanced-usage)
@@ -65,7 +67,7 @@ reconstruction = pipeline.reconstruct(
 - [Contributing](#-contributing)
 - [Citation](#-citation)
 
-## Core Technologies
+## 🧩 Core Technologies
 
 
 #### 1. [LoFTR (Local Feature TRansformer)](https://arxiv.org/abs/2104.00680)
@@ -377,26 +379,3 @@ class BaseMatcher:
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Development Setup
-
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
-pytest tests/
-
-# Code formatting
-black vision3d/
-isort vision3d/
-
-# Type checking
-mypy vision3d/
-```
-
-## 📚 Citation
-
-If you use this code in your research, please cite:
-
-```
