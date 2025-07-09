@@ -7,7 +7,7 @@
 
 ## 🚀 Overview
 
-Vision3D is a production-ready, one-step solution for 3D scene reconstruction from photographs. Provide a folder of images, execute a single command, and obtain a high-quality 3D model. The library integrates state-of-the-art deep learning with classical computer vision, abstracting away complexity while remaining fully configurable.
+Vision3D is a one-step solution for 3D scene reconstruction from photographs. Provide a folder of images, execute a single command, and obtain a high-quality 3D model. The library combines deep learning with classical computer vision, abstracting away complexity while remaining fully configurable.
 
 ```python
 from vision3d import Vision3DPipeline
@@ -66,63 +66,31 @@ reconstruction = pipeline.reconstruct(
 - [Contributing](#contributing)
 - [Citation](#citation)
 
-## 🎯 Background
+## Core Technologies
 
-### The Story Behind This Project
 
-This project originated from the [Image Matching Challenge 2023](https://www.kaggle.com/competitions/image-matching-challenge-2023) on Kaggle, where teams competed to build the best 3D reconstruction systems. The challenge: given a collection of photos, can you reconstruct the 3D scene and determine where each photo was taken?
+#### 1. [LoFTR (Local Feature TRansformer)](https://arxiv.org/abs/2104.00680)
+LoFTR is a detector-free local feature matcher that leverages transformer self-attention to predict dense, pixel-level correspondences between two images. By reasoning about global context instead of isolated keypoints, it remains reliable on texture-poor surfaces, repetitive facades and under difficult lighting — scenarios that often break classical detectors.
 
-### The Core Technologies
+<p align="center"><img src="examples/loftr.png" width="80%" /></p>
 
-We combine three revolutionary approaches:
+#### 2. [SuperGlue](https://arxiv.org/abs/1911.11763)
+SuperGlue refines traditional keypoints into high-quality matches by passing them through a graph neural network that jointly reasons over appearance and spatial relationships. This results in fast, globally consistent correspondences that excel on large, well-textured scenes where speed is paramount.
 
-#### 1. LoFTR (Local Feature TRansformer) 
-Think of LoFTR as having superhuman vision that can find corresponding points between images, even in challenging conditions:
-- **What it does**: Finds pixel-level correspondences between images
-- **How it works**: Uses transformer attention (like GPT) to understand global image context
-- **When to use**: Textureless surfaces, repetitive patterns, difficult lighting
+<p align="center"><img src="examples/superglue.png" width="80%" /></p>
 
-[TODO: image showing LoFTR matching on a textureless wall]
+#### 3. [COLMAP](https://colmap.github.io/)
+COLMAP is the structure-from-motion backbone that turns 2D correspondences into an accurate, metrically scaled 3D model. Through incremental reconstruction, precise camera pose estimation and global bundle adjustment, it delivers industry-standard robustness and accuracy even on challenging, large-scale datasets.
 
-#### 2. SuperGlue
-SuperGlue is like a master puzzle solver that connects feature points between images:
-- **What it does**: Matches distinctive keypoints using graph neural networks
-- **How it works**: Considers both appearance and spatial relationships
-- **When to use**: Well-textured scenes, when speed is important
-
-[TODO: image showing SuperGlue connecting keypoints between two images]
-
-#### 3. COLMAP
-COLMAP is the geometry engine that turns 2D matches into 3D models:
-- **What it does**: Reconstructs 3D structure from matched features
-- **How it works**: Solves complex geometric optimization problems
-- **Why it's used**: Industry standard, extremely robust and accurate
+<p align="center"><img src="examples/colmap.png" width="80%" /></p>
 
 ### Real-World Applications
 
-This technology powers:
 - 📱 **AR/VR**: Creating 3D environments for virtual reality
 - 🚗 **Autonomous Vehicles**: Understanding 3D surroundings from cameras
 - 🏛️ **Cultural Heritage**: Preserving historical sites in 3D
 - 🎮 **Gaming**: Creating 3D assets from photographs
 - 🏗️ **Construction**: Monitoring building progress with drones
-
-### Why Our Hybrid Approach?
-
-Traditional methods fail when facing:
-- ❌ **Textureless regions** (white walls, sky)
-- ❌ **Repetitive patterns** (windows on a building)
-- ❌ **Large viewpoint changes** (front vs side view)
-- ❌ **Varying lighting** (day vs night)
-
-Our solution adaptively combines multiple methods:
-```python
-# Pseudocode of our approach
-if scene_has_many_images:
-    use_superglue()  # Faster for large scenes
-else:
-    use_loftr() + use_superglue()  # More accurate for small scenes
-```
 
 ## 🏗️ Architecture
 
@@ -486,26 +454,4 @@ mypy vision3d/
 
 If you use this code in your research, please cite:
 
-```bibtex
-@software{vision3d2024,
-  author = {Nesterov, Andrej},
-  title = {Vision3D: State-of-the-Art 3D Reconstruction from Images},
-  year = {2024},
-  url = {https://github.com/yourusername/vision3d}
-}
 ```
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [LoFTR](https://github.com/zju3dv/LoFTR) team for the excellent dense matching method
-- [SuperGlue](https://github.com/magicleap/SuperGluePretrainedNetwork) team for sparse matching
-- [COLMAP](https://colmap.github.io/) for the robust SfM pipeline
-- Kaggle community for valuable feedback and ideas
-
----
-
-**Built with ❤️ for the Computer Vision community**
