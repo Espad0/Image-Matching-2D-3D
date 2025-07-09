@@ -55,7 +55,6 @@ reconstruction = pipeline.reconstruct(
 
 ## 📋 Table of Contents
 
-- [Theory and Fundamentals](THEORY.md) - **Start here if you're new to 3D reconstruction!**
 - [Background](#background)
 - [Architecture](#architecture)
 - [Installation](#installation)
@@ -92,73 +91,23 @@ COLMAP is the structure-from-motion backbone that turns 2D correspondences into 
 - 🎮 **Gaming**: Creating 3D assets from photographs
 - 🏗️ **Construction**: Monitoring building progress with drones
 
-## 🏗️ Architecture
+### Pipeline
 
-[TODO: image showing the complete system architecture with data flow]
+The 3D reconstruction pipeline follows these steps:
 
-### How It All Works Together
-
-Think of our pipeline as a three-stage process, like building a house:
-
-1. **🔍 Foundation (Image Pair Selection)**: Decide which photos to compare
-2. **🔗 Framework (Feature Matching)**: Find connections between photos
-3. **🏠 Construction (3D Reconstruction)**: Build the 3D model
-
-### Detailed Pipeline
-
-#### Stage 1: Smart Image Pair Selection
-Instead of comparing every image with every other image (which would be slow), we intelligently select pairs:
-
-```python
-# Example: 100 images = 4,950 possible pairs!
-# We reduce this to ~500 most promising pairs
-
-1. Extract "fingerprint" of each image using AI (EfficientNet)
-2. Compare fingerprints to find similar images
-3. Select pairs that are:
-   - Similar enough (likely overlap)
-   - Different enough (good 3D baseline)
-```
-
-[TODO: image showing image similarity matrix and selected pairs]
-
-#### Stage 2: Feature Matching Pipeline
-This is where the magic happens - finding corresponding points between images:
-
-```python
-# Our adaptive strategy
-if number_of_pairs > 400:
-    # Large scene: prioritize speed
-    matches = SuperGlue(max_keypoints=8000)
-else:
-    # Small scene: prioritize accuracy
-    matches = LoFTR() + SuperGlue()
-```
-
-**Multi-Scale Matching**: We process images at different sizes:
-- 🔍 Small (640px): Fast initial matching
-- 🔎 Medium (1024px): Balanced speed/accuracy  
-- 🔬 Large (1440px): Maximum accuracy
-
-**Test-Time Augmentation (TTA)**: Like taking multiple measurements for accuracy:
-- Original image
-- Horizontally flipped
-- Rotated variants
-
-#### Stage 3: 3D Reconstruction with COLMAP
-COLMAP converts 2D matches into 3D structure:
-
-```
-1. Initialize: Start with two images
-2. Incremental growth:
-   while more_images_available:
-       - Find best next image
-       - Estimate its camera position
-       - Add new 3D points
-       - Optimize everything (Bundle Adjustment)
-```
-
-[TODO: image showing incremental reconstruction steps]
+1. **Image Loading**: Load all input images from the specified directory
+2. **Global Feature Extraction**: Extract image-level descriptors using EfficientNet for similarity comparison
+3. **Pair Selection**: Intelligently select image pairs based on similarity scores (avoiding unnecessary comparisons)
+4. **Feature Matching**: 
+   - Use LoFTR for dense matching on challenging scenes
+   - Use SuperGlue for fast sparse matching on larger datasets
+   - Apply multi-scale processing and test-time augmentation for robustness
+5. **COLMAP Reconstruction**:
+   - Initialize reconstruction with the best image pair
+   - Incrementally add new images, estimating camera poses
+   - Triangulate 3D points from matched features
+   - Perform bundle adjustment to optimize camera parameters and 3D points
+6. **Export Results**: Save the 3D model as PLY file and camera parameters as JSON
 
 ### System Architecture
 
@@ -184,29 +133,6 @@ vision3d/
     ├── advanced_matching.py
     └── tutorial.ipynb
 ```
-
-### Data Flow
-
-```mermaid
-graph LR
-    A[Input Images] --> B[Global Descriptors]
-    B --> C[Pair Selection]
-    C --> D{Matcher Selection}
-    D -->|Many images| E[SuperGlue]
-    D -->|Few images| F[LoFTR + SuperGlue]
-    E --> G[Feature Matches]
-    F --> G
-    G --> H[COLMAP]
-    H --> I[3D Model]
-```
-
-### Key Design Principles
-
-1. **Modularity**: Each component can be used independently
-2. **Adaptivity**: Automatically chooses best method for your data
-3. **Robustness**: Handles failures gracefully
-4. **Scalability**: Works on 10 images or 10,000 images
-5. **Reproducibility**: Deterministic results with fixed seeds
 
 ## 💻 Installation
 
