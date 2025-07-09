@@ -55,15 +55,15 @@ reconstruction = pipeline.reconstruct(
 
 ## 📋 Table of Contents
 
-- [Background](#background)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Advanced Usage](#advanced-usage)
-- [Performance](#performance)
-- [API Reference](#api-reference)
-- [Contributing](#contributing)
-- [Citation](#citation)
+- [Core Technologies](#core-technologies)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Advanced Usage](#-advanced-usage)
+- [Performance](#-performance)
+- [API Reference](#-api-reference)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [Citation](#-citation)
 
 ## Core Technologies
 
@@ -178,12 +178,6 @@ sudo apt-get install colmap
 brew install colmap
 ```
 
-### Step 4: Download Model Weights
-
-```bash
-# Download pretrained weights
-python scripts/download_weights.py
-```
 
 ## 🚀 Quick Start
 
@@ -195,29 +189,30 @@ from vision3d import Vision3DPipeline
 # Initialize pipeline
 pipeline = Vision3DPipeline(matcher_type='hybrid')
 
-# List of image paths
+# Run reconstruction from a directory of images
+reconstruction = pipeline.reconstruct(
+    "path/to/images",     # Directory containing images
+    output_dir="output"   # Where to save results
+)
+
+# Or use a list of specific image paths
 images = ['img1.jpg', 'img2.jpg', 'img3.jpg']
-
-# Run reconstruction
-reconstruction = pipeline.reconstruct(images)
-
-# Export results
-pipeline.export_results(reconstruction, 'output/')
+reconstruction = pipeline.reconstruct(
+    images,
+    output_dir="output"
+)
 ```
 
 ### Command Line Interface
 
 ```bash
-# Basic reconstruction
-python -m vision3d.reconstruct --images ./images --output ./output
+# Basic reconstruction using the simple script
+python reconstruct.py ./images ./output
 
-# With custom settings
-python -m vision3d.reconstruct \
-    --images ./images \
-    --output ./output \
-    --matcher loftr \
-    --max-image-size 1024 \
-    --min-matches 15
+# Or if no arguments provided, uses default paths:
+# - Input: examples/images
+# - Output: ./featureout
+python reconstruct.py
 ```
 
 ## 🔬 Advanced Usage
@@ -247,13 +242,13 @@ pipeline = Vision3DPipeline(config=config)
 from vision3d.models import LoFTRMatcher, SuperGlueMatcher
 
 # LoFTR for challenging indoor scenes
-loftr = LoFTRMatcher(device='cuda', pretrained='indoor')
+loftr = LoFTRMatcher(device='cuda')
 kpts1, kpts2, conf = loftr.match_pair('img1.jpg', 'img2.jpg')
 
 # SuperGlue for outdoor scenes with more keypoints
-superglue = SuperGlueMatcher(device='cuda', weights='outdoor')
-kpts1, kpts2, conf = superglue.match_with_high_resolution(
-    'img1.jpg', 'img2.jpg', max_keypoints=8192
+superglue = SuperGlueMatcher(device='cuda')
+kpts1, kpts2, conf = superglue.match_pair(
+    'img1.jpg', 'img2.jpg'
 )
 ```
 
@@ -280,30 +275,6 @@ visualize_matches(img1, img2, kpts1, kpts2, 'matches.png')
 visualize_reconstruction(reconstruction, 'reconstruction.html')
 ```
 
-## 📊 Performance
-
-### Benchmarks
-
-[An image showing performance comparison chart]
-
-| Method | Precision | Recall | F1-Score | Speed (img/s) |
-|--------|-----------|---------|----------|---------------|
-| LoFTR | 0.89 | 0.85 | 0.87 | 2.5 |
-| SuperGlue | 0.92 | 0.81 | 0.86 | 4.2 |
-| **Hybrid (Ours)** | **0.93** | **0.88** | **0.90** | **3.8** |
-
-### Hardware Requirements
-
-- **Minimum**: 8GB RAM, GTX 1060 (6GB VRAM)
-- **Recommended**: 16GB RAM, RTX 3070 (8GB VRAM)
-- **Optimal**: 32GB RAM, RTX 3090 (24GB VRAM)
-
-### Optimization Tips
-
-1. **Batch Processing**: Process multiple image pairs simultaneously
-2. **Resolution Selection**: Use adaptive resolution based on image content
-3. **GPU Memory**: Monitor and adjust batch sizes to prevent OOM errors
-
 ## 📖 API Reference
 
 ### Vision3DPipeline
@@ -312,14 +283,41 @@ Main pipeline class for 3D reconstruction.
 
 ```python
 class Vision3DPipeline:
-    def __init__(self, matcher_type='hybrid', device=None, config=None):
-        """Initialize the pipeline."""
+    def __init__(self, config=None, matcher_type='hybrid', device=None):
+        """Initialize the pipeline.
         
-    def reconstruct(self, image_paths, output_dir=None, verbose=True):
-        """Perform 3D reconstruction."""
+        Args:
+            config: Configuration dictionary
+            matcher_type: Type of matcher ('loftr', 'superglue', 'hybrid')
+            device: Device for computation ('cuda', 'cpu', or torch.device)
+        """
         
-    def export_results(self, reconstruction, output_path, formats=['ply', 'json']):
-        """Export reconstruction results."""
+    def reconstruct(self, image_path, output_dir='./output', image_pairs=None, 
+                   skip_pair_selection=False, skip_feature_extraction=False, 
+                   skip_reconstruction=False, verbose=True):
+        """Perform 3D reconstruction.
+        
+        Args:
+            image_path: Path to image directory or list of image paths
+            output_dir: Output directory for results
+            image_pairs: Optional pre-computed image pairs
+            skip_pair_selection: Skip automatic pair selection
+            skip_feature_extraction: Skip feature extraction
+            skip_reconstruction: Skip 3D reconstruction
+            verbose: Show progress information
+            
+        Returns:
+            Dictionary containing reconstruction results
+        """
+        
+    def export_results(self, reconstruction, output_path, formats=None):
+        """Export reconstruction results.
+        
+        Args:
+            reconstruction: Reconstruction object
+            output_path: Output path
+            formats: List of export formats ['ply', 'json', 'nvm']
+        """
 ```
 
 ### Matchers
@@ -329,10 +327,31 @@ Base interface for all matchers:
 ```python
 class BaseMatcher:
     def match_pair(self, image1_path, image2_path, **kwargs):
-        """Match features between two images."""
+        """Match features between two images.
         
-    def match_pairs(self, image_paths, pairs, output_dir, verbose=True):
-        """Match features for multiple image pairs."""
+        Args:
+            image1_path: Path to first image
+            image2_path: Path to second image
+            **kwargs: Additional matcher-specific arguments
+            
+        Returns:
+            kpts1: Keypoints in image 1 (N x 2)
+            kpts2: Keypoints in image 2 (N x 2)
+            confidence: Match confidence scores (N,)
+        """
+        
+    def match_pairs(self, image_paths, pairs, output_dir=None, verbose=True):
+        """Match features for multiple image pairs.
+        
+        Args:
+            image_paths: List of image paths
+            pairs: List of (idx1, idx2) pairs to match
+            output_dir: Optional directory to save matches
+            verbose: Show progress
+            
+        Returns:
+            Dictionary mapping (idx1, idx2) to match data
+        """
 ```
 
 ## 🛠️ Troubleshooting
