@@ -136,9 +136,6 @@ pretrained/
 output/
 results/
 *.h5
-*.ckpt
-*.pth
-*.pt
 colmap.db
 *.ply
 *.obj
