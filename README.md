@@ -1,4 +1,4 @@
-# Vision3D: State-of-the-Art 3D Reconstruction from Images
+# Vision3D: 3D Reconstruction from Images
 
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-1.10+-ee4c2c.svg)](https://pytorch.org/)
